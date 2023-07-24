@@ -29,8 +29,10 @@ import shutil
 import sys
 import time
 import warnings
+import torch_xla.debug.profiler as xp
 from collections.abc import Mapping
 from pathlib import Path
+from threading import Thread
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 
@@ -162,6 +164,7 @@ if is_datasets_available():
     import datasets
 
 if is_torch_tpu_available(check_device=False):
+    import torch_xla
     import torch_xla.core.xla_model as xm
     import torch_xla.debug.metrics as met
 
@@ -838,7 +841,8 @@ class Trainer:
             dataloader_params["drop_last"] = self.args.dataloader_drop_last
             dataloader_params["worker_init_fn"] = seed_worker
 
-        return self.accelerator.prepare(DataLoader(train_dataset, **dataloader_params))
+        # TODO(jonbolin): Disabling Accelerate on the dataloader (`Unknown device SPMD:0`)
+        return DataLoader(train_dataset, **dataloader_params)
 
     def _get_eval_sampler(self, eval_dataset: Dataset) -> Optional[torch.utils.data.Sampler]:
         # Deprecated code
@@ -1444,6 +1448,21 @@ class Trainer:
 
         return model
 
+    def _xla_sharded_dataloader(self, dataloader):
+        if is_torch_tpu_available():
+            sharding_spec = None
+            if self.args.spmd_batch_sharding:
+                import torch_xla.experimental.xla_sharding as xs
+                import torch_xla.runtime as xr
+                import torch_xla.distributed.parallel_loader as pl
+                num_devices = xr.global_device_count()
+                device_ids = np.arange(num_devices)
+                mesh = xs.Mesh(device_ids, (num_devices, 1))
+                sharding_spec = xs.ShardingSpec(mesh, (0, 1))
+            return pl.MpDeviceLoader(dataloader, self.args.device, input_sharding=sharding_spec, loader_prefetch_size=self.args.train_batch_size, device_prefetch_size=4)
+        else:
+            return dataloader
+
     def train(
         self,
         resume_from_checkpoint: Optional[Union[str, bool]] = None,
@@ -1537,7 +1556,7 @@ class Trainer:
         self._train_batch_size = batch_size
         logger.debug(f"Currently training with a batch size of: {self._train_batch_size}")
         # Data loader and number of training steps
-        train_dataloader = self.get_train_dataloader()
+        train_dataloader = self._xla_sharded_dataloader(self.get_train_dataloader())
 
         # Setting up training control variables:
         # number of training epochs: num_train_epochs
@@ -1771,7 +1790,13 @@ class Trainer:
                 rng_to_sync = True
 
             step = -1
+            profile_step = int(os.environ.get('PROFILE_STEP', -1))
+            profile_epoch = int(os.environ.get('PROFILE_EPOCH', -1))
+            profile_duration = int(os.environ.get('PROFILE_DURATION_MS', 20000))
+            profile_logdir = os.environ.get('PROFILE_LOGDIR', None)
             for step, inputs in enumerate(epoch_iterator):
+                if step == 0 and epoch == 0:
+                    print('input sharding', {k: (v.shape, torch_xla._XLAC._get_xla_sharding_spec(v)) for k, v in inputs.items()})
                 total_batched_samples += 1
                 if rng_to_sync:
                     self._load_rng_state(resume_from_checkpoint)
@@ -1791,6 +1816,10 @@ class Trainer:
 
                 if step % args.gradient_accumulation_steps == 0:
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
+
+                if step == profile_step and epoch == profile_epoch:
+                    trace = lambda: xp.trace('127.0.0.1:9012', profile_logdir or tempfile.mkdtemp(), profile_duration or 20000)
+                    Thread(target=trace).start()
 
                 with self.accelerator.accumulate(model):
                     tr_loss_step = self.training_step(model, inputs)
@@ -2199,7 +2228,8 @@ class Trainer:
             self.log(logs)
 
         metrics = None
-        if self.control.should_evaluate:
+        # TODO(jonbolin): Disabling eval loop
+        if False: # self.control.should_evaluate:
             if isinstance(self.eval_dataset, dict):
                 metrics = {}
                 for eval_dataset_name, eval_dataset in self.eval_dataset.items():
@@ -2914,7 +2944,7 @@ class Trainer:
         # memory metrics - must set up as early as possible
         self._memory_tracker.start()
 
-        eval_dataloader = self.get_eval_dataloader(eval_dataset)
+        eval_dataloader = self._xla_sharded_dataloader(self.get_eval_dataloader(eval_dataset))
         start_time = time.time()
 
         eval_loop = self.prediction_loop if self.args.use_legacy_prediction_loop else self.evaluation_loop
