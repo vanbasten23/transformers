@@ -506,13 +506,28 @@ def main():
             print('> Sharding tensor', name, param.shape)
             tensor = model_args.spmd_tensor_sharding
             fsdp = num_devices // tensor
-            assert fsdp * tensor == num_devices
-            mesh = xs.Mesh(device_ids, (fsdp, tensor))
+
+            col_mesh = xs.HybridMesh(ici_mesh_shape=(fsdp, tensor))
+            row_mesh = xs.HybridMesh(ici_mesh_shape=(tensor, fsdp))
             if len(param.shape) == 1:
-                xs.mark_sharding(param, mesh, (1,))
+                # Mark sharding on FSDP axis to replicate in tensor dimension
+                xs.mark_sharding(param, col_mesh, (0,))
+                pass
             else:
                 assert len(param.shape) == 2
-                xs.mark_sharding(param, mesh, range(len(param.shape)))
+                if 'embed_tokens' in name:
+                    xs.mark_sharding(param, row_mesh, (0, 1))
+                elif 'self_attn' in name:
+                    if '.o_proj' in name:
+                        xs.mark_sharding(param, row_mesh, (0, 1))
+                    else:
+                        xs.mark_sharding(param, col_mesh, (0, 1))
+                elif 'mlp' in name:
+                    if 'down_proj' in name:
+                        xs.mark_sharding(param, col_mesh, (0, 1))
+                    else:
+                        xs.mark_sharding(param, row_mesh, (0, 1))
+
 
     # Preprocessing the datasets.
     # First we tokenize all the texts.
