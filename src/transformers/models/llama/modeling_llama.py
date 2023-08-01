@@ -370,6 +370,20 @@ class LlamaAttention(nn.Module):
         if not output_attentions:
             attn_weights = None
 
+        # Apply 2D sharding:
+        # activation (data,, None, model)
+        # import torch_xla.core.xla_model as xm
+        # import torch_xla.experimental.xla_sharding as xs
+        # import torch_xla.runtime as xr
+        # num_devices = xr.global_runtime_device_count()
+        # device_ids = torch.arange(num_devices)
+        # print('> Sharding activations', attn_output.shape)
+        # model = 2
+        # data = num_devices // model
+        # assert model * data == num_devices
+        # data_model_mesh = xs.Mesh(device_ids, (data, model))
+        # xs.mark_sharding(attn_output, data_model_mesh, (0, None, 1))
+
         return attn_output, attn_weights, past_key_value
 
 

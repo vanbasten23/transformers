@@ -1460,7 +1460,7 @@ class Trainer:
             if self.args.spmd_batch_sharding:
                 mesh = xs.Mesh(device_ids, (num_devices, 1))
                 sharding_spec = xs.ShardingSpec(mesh, (0, 1))
-            elif self.args.spmd_tensor_sharding > 0:
+            elif self.args.spmd_tensor_sharding > 0 or model_args.spmd_2d_sharding > 0:
                 tensor = self.args.spmd_tensor_sharding
                 fsdp = num_devices // tensor
                 mesh = xs.Mesh(device_ids, (fsdp, tensor))
