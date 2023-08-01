@@ -537,8 +537,8 @@ def main():
             mod = model_args.spmd_2d_sharding
             data = num_devices // mod
             assert mod * data == num_devices
-            data_model_mesh = xs.Mesh(device_ids, (data, mod))
-            model_data_mesh = xs.Mesh(device_ids, (mod, data))
+            data_model_mesh = xs.HybridMesh(ici_mesh_shape=(data, mod))
+            model_data_mesh = xs.HybridMesh(ici_mesh_shape=(mod, data))
 
             # We don't care about layernorm's weights, and
             # LLaMA doesn't use biases.
@@ -552,9 +552,9 @@ def main():
             elif 'o_proj' in name:
                 xs.mark_sharding(param, model_data_mesh, range(len(param.shape)))
             elif 'gate_proj' in name or 'up_proj' in name:
-                xs.mark_sharding(param, data_model_mesh, range(len(param.shape)))
-            elif 'down_proj' in name:
                 xs.mark_sharding(param, model_data_mesh, range(len(param.shape)))
+            elif 'down_proj' in name:
+                xs.mark_sharding(param, data_model_mesh, range(len(param.shape)))
             elif 'lm_head' in name:  # Not sure what this is but has the same shape as embed_tokens
                 xs.mark_sharding(param, model_data_mesh, range(len(param.shape)))
 
