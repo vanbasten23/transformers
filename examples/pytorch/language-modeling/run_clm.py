@@ -453,6 +453,8 @@ def main():
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
 
+    # Pass the 2d sharding config to the actual model.
+    config.spmd_2d_sharding = model_args.spmd_2d_sharding
     if model_args.model_name_or_path:
         torch_dtype = (
             model_args.torch_dtype

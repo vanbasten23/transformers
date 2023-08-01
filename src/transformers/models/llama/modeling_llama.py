@@ -240,6 +240,8 @@ class LlamaAttention(nn.Module):
     def __init__(self, config: LlamaConfig):
         super().__init__()
         self.config = config
+        # For PyTorch/XLA's SPMD 2D sharding
+        self.spmd_2d_sharding = config.spmd_2d_sharding
         self.hidden_size = config.hidden_size
         self.num_heads = config.num_attention_heads
         self.head_dim = self.hidden_size // self.num_heads
@@ -379,7 +381,7 @@ class LlamaAttention(nn.Module):
         num_devices = xr.global_runtime_device_count()
         device_ids = torch.arange(num_devices)
         print('> Sharding activations', attn_output.shape)
-        model = 2
+        model = self.spmd_2d_sharding
         data = num_devices // model
         assert model * data == num_devices
         data_model_mesh = xs.Mesh(device_ids, (data, 1, model))
@@ -575,6 +577,9 @@ class LlamaModel(LlamaPreTrainedModel):
 
     def __init__(self, config: LlamaConfig):
         super().__init__(config)
+        # For PyTorch/XLA's SPMD 2D sharding
+        self.spmd_2d_sharding = config.spmd_2d_sharding
+
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
 
@@ -685,7 +690,7 @@ class LlamaModel(LlamaPreTrainedModel):
         num_devices = xr.global_runtime_device_count()
         device_ids = torch.arange(num_devices)
         print('> Sharding hidden_states', hidden_states.shape)
-        model = 2
+        model = self.spmd_2d_sharding
         data = num_devices // model
         assert model * data == num_devices
         data_model_mesh = xs.Mesh(device_ids, (data, 1, model))
