@@ -531,8 +531,8 @@ def main():
             # embedding (model, data)
             # attn QKV (data, model)
             # attn O (model, data)
-            # mlp gate, up (data, model)
-            # mlp down (model, data)
+            # mlp gate, up (model, data)
+            # mlp down (data, model)
             print('> Sharding tensor', name, param.shape)
             mod = model_args.spmd_2d_sharding
             data = num_devices // mod
