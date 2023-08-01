@@ -532,11 +532,11 @@ def main():
             # mlp gate, up (data, model)
             # mlp down (model, data)
             print('> Sharding tensor', name, param.shape)
-            model = model_args.spmd_2d_sharding
-            data = num_devices // model
-            assert model * data == num_devices
-            data_model_mesh = xs.Mesh(device_ids, (data, model))
-            model_data_mesh = xs.Mesh(device_ids, (model, data))
+            mod = model_args.spmd_2d_sharding
+            data = num_devices // mod
+            assert mod * data == num_devices
+            data_model_mesh = xs.Mesh(device_ids, (data, mod))
+            model_data_mesh = xs.Mesh(device_ids, (mod, data))
 
             # We don't care about layernorm's weights, and
             # LLaMA doesn't use biases.
