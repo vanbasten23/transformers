@@ -29,8 +29,10 @@ import shutil
 import sys
 import time
 import warnings
+import torch_xla.debug.profiler as xp
 from collections.abc import Mapping
 from pathlib import Path
+from threading import Thread
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 
@@ -1771,7 +1773,12 @@ class Trainer:
                 rng_to_sync = True
 
             step = -1
+            profile_step = int(os.environ.get('PROFILE_STEP', 2))
+            profile_epoch = int(os.environ.get('PROFILE_EPOCH', 1))
+            profile_duration = int(os.environ.get('PROFILE_DURATION_MS', 60000))
+            profile_logdir = os.environ.get('PROFILE_LOGDIR', None)
             for step, inputs in enumerate(epoch_iterator):
+                logger.info("current step {}".format(step))
                 total_batched_samples += 1
                 if rng_to_sync:
                     self._load_rng_state(resume_from_checkpoint)
@@ -1791,6 +1798,12 @@ class Trainer:
 
                 if step % args.gradient_accumulation_steps == 0:
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
+
+                if step == profile_step and epoch == profile_epoch:
+                    if is_torch_tpu_available() and xm.is_master_ordinal():
+                        logger.info("start profiling")
+                        trace = lambda: xp.trace('127.0.0.1:9012', profile_logdir or tempfile.mkdtemp(), profile_duration or 20000)
+                        Thread(target=trace).start()
 
                 with self.accelerator.accumulate(model):
                     tr_loss_step = self.training_step(model, inputs)
@@ -2760,8 +2773,6 @@ class Trainer:
             self.push_to_hub(commit_message="Model save")
 
     def _save_tpu(self, output_dir: Optional[str] = None):
-        # Disable due to OOM
-        print("skip saving model")
         return
         output_dir = output_dir if output_dir is not None else self.args.output_dir
         logger.info(f"Saving model checkpoint to {output_dir}")
@@ -2791,8 +2802,6 @@ class Trainer:
             self.tokenizer.save_pretrained(output_dir)
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
-        # Disable due to OOM
-        print("skip saving model")
         return
         # If we are executing this function, we are the process zero, so we don't check for that.
         output_dir = output_dir if output_dir is not None else self.args.output_dir
