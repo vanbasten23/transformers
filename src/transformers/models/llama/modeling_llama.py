@@ -559,12 +559,30 @@ class LlamaModel(LlamaPreTrainedModel):
 
     def __init__(self, config: LlamaConfig):
         super().__init__(config)
+
+        import torch_xla.core.xla_model as xm
+        from torch_xla.distributed.fsdp import XlaFullyShardedDataParallel as FSDP, checkpoint_module
+        fsdp_wrap = lambda m: FSDP(m.to(xm.xla_device()), compute_dtype=torch.bfloat16, shard_param_on_dim_0=True, pin_layout_in_collective_ops=True)
+        grad_ckpt_wrap = checkpoint_module
+
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
 
+        
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
-        self.layers = nn.ModuleList([LlamaDecoderLayer(config) for _ in range(config.num_hidden_layers)])
+        self.embed_tokens.apply(self._init_weights)
+
+        logger.info("FSDP wrapping decoker blocks.")
+        layers = []
+        for i in range(config.num_hidden_layers):
+            layer = LlamaDecoderLayer(config)
+            layer.apply(self._init_weights)
+            layer = fsdp_wrap(grad_ckpt_wrap(layer))
+            layers.append(layer)
+        self.layers = nn.ModuleList(layers)
+        # self.layers = nn.ModuleList([LlamaDecoderLayer(config) for _ in range(config.num_hidden_layers)])
         self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.norm.apply(self._init_weights)
 
         self.gradient_checkpointing = False
         # Initialize weights and apply final processing

@@ -1105,7 +1105,11 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin, GenerationMixin, PushToHubMix
         A method executed at the end of each Transformer model initialization, to execute code that needs the model's
         modules properly initialized (such as weight initialization).
         """
-        self.init_weights()
+        # self.init_weights()
+        # self._backward_compatibility_gradient_checkpointing()
+        if self.config.pruned_heads:
+            self.prune_heads(self.config.pruned_heads)
+        self.tie_weights()
         self._backward_compatibility_gradient_checkpointing()
 
     def _backward_compatibility_gradient_checkpointing(self):
