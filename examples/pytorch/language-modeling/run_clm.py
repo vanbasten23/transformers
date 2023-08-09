@@ -515,7 +515,7 @@ def main():
     num_devices = xr.global_runtime_device_count()
     device_ids = torch.arange(num_devices)
     print('Using dtype', model_args.torch_dtype)
-    model = model.to(xm.xla_device(), dtype=getattr(torch, model_args.torch_dtype))
+    model = model.to(dtype=getattr(torch, model_args.torch_dtype))
 
     def get_mesh(ici_mesh_shape, dcn_mesh_shape=None):
       if model_args.spmd_iota_mesh:
