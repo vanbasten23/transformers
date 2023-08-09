@@ -19,6 +19,7 @@
 # limitations under the License.
 """ PyTorch LLaMA model."""
 import math
+import functools
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -30,6 +31,7 @@ from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from ...activations import ACT2FN
 from ...modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast, SequenceClassifierOutputWithPast
 from ...modeling_utils import PreTrainedModel
+from ...trainer_pt_utils import get_module_class_from_name
 from ...utils import add_start_docstrings, add_start_docstrings_to_model_forward, logging, replace_return_docstrings
 from .configuration_llama import LlamaConfig
 
@@ -562,7 +564,11 @@ class LlamaModel(LlamaPreTrainedModel):
 
         import torch_xla.core.xla_model as xm
         from torch_xla.distributed.fsdp import XlaFullyShardedDataParallel as FSDP, checkpoint_module
-        fsdp_wrap = lambda m: FSDP(m, compute_dtype=torch.bfloat16, shard_param_on_dim_0=True, pin_layout_in_collective_ops=True, disable_reshard_on_root=False)
+        from torch_xla.distributed.fsdp.wrap import (
+            transformer_auto_wrap_policy,
+        )
+
+        # fsdp_wrap = lambda m: FSDP(m, compute_dtype=torch.bfloat16, shard_param_on_dim_0=True, pin_layout_in_collective_ops=True)
         grad_ckpt_wrap = checkpoint_module
 
         self.padding_idx = config.pad_token_id
@@ -574,8 +580,25 @@ class LlamaModel(LlamaPreTrainedModel):
 
         logger.info("FSDP wrapping decoder blocks.")
         layers = []
+        fsdp_wrap = None
         for i in range(config.num_hidden_layers):
             layer = LlamaDecoderLayer(config)
+            if i == 0:
+                transformer_cls_to_wrap = set()
+                fsdp_transformer_layer_cls_to_wrap = ["LlamaMLP", "LlamaAttention"]
+                for layer_class in fsdp_transformer_layer_cls_to_wrap:
+                    transformer_cls = get_module_class_from_name(layer, layer_class)
+                    if transformer_cls is None:
+                        raise Exception("Could not find the transformer layer class to wrap in the model.")
+                    else:
+                        transformer_cls_to_wrap.add(transformer_cls)
+
+                auto_wrap_policy = functools.partial(
+                    transformer_auto_wrap_policy,
+                    # Transformer layer class to wrap
+                    transformer_layer_cls=transformer_cls_to_wrap,
+                )
+                fsdp_wrap = lambda m: FSDP(m, compute_dtype=torch.bfloat16, shard_param_on_dim_0=True, pin_layout_in_collective_ops=True, auto_wrap_policy=auto_wrap_policy)
             layer.apply(self._init_weights)
             layer = fsdp_wrap(grad_ckpt_wrap(layer))
             layers.append(layer)
