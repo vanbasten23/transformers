@@ -572,7 +572,7 @@ class LlamaModel(LlamaPreTrainedModel):
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
         self.embed_tokens.apply(self._init_weights)
 
-        logger.info("FSDP wrapping decoker blocks.")
+        logger.info("FSDP wrapping decoder blocks.")
         layers = []
         for i in range(config.num_hidden_layers):
             layer = LlamaDecoderLayer(config)
