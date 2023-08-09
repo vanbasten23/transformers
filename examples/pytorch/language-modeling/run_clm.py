@@ -476,6 +476,7 @@ def main():
     # Pass the 2d sharding config to the actual model.
     config.spmd_2d_sharding = model_args.spmd_2d_sharding
     config.spmd_tensor_sharding = model_args.spmd_tensor_sharding
+    config.spmd_fsdp_sharding = model_args.spmd_fsdp_sharding
     config.spmd_debug = model_args.spmd_debug
     config.spmd_iota_mesh = model_args.spmd_iota_mesh
     with init_empty_weights():
@@ -534,16 +535,14 @@ def main():
         # TODO(jonbolin): Can't load_state_dict when the module consists of meta tensors
         path = re.sub(r'.(\d+)', r'[\1]', name)
         assign = f'model.{path} = torch.nn.Parameter(param)'
-        print(f'running "{assign}"')
+        # print(f'running "{assign}"')
         exec(assign)
 
         # Mark sharding based on the model_args
         if model_args.spmd_fsdp_sharding:
             import numpy as np
-            max_dim = np.argmax(param.shape)
-            mesh_shape = [1] * len(param.shape)
-            mesh_shape[max_dim] = num_devices
-            print('> [FSDP] Sharding tensor', name, param.shape, mesh_shape)
+            mesh_shape = (num_devices,) + (1,) * (len(param.shape) - 1)
+            print('> [FSDP] Sharding tensor', name, param.shape)
             mesh = xs.HybridMesh(ici_mesh_shape=tuple(mesh_shape))
             xs.mark_sharding(param, mesh, range(len(param.shape)))
         elif model_args.spmd_tensor_sharding > 0:
@@ -591,8 +590,8 @@ def main():
             elif 'lm_head' in name:  # Not sure what this is but has the same shape as embed_tokens
                 xs.mark_sharding(param, model_data_mesh, range(len(param.shape)))
 
-            import torch_xla
-            print(torch_xla._XLAC._get_xla_sharding_spec(param))
+        import torch_xla
+        print(torch_xla._XLAC._get_xla_sharding_spec(param))
 
     # Move anything remaining to the xla device
     model = model.to(xm.xla_device())

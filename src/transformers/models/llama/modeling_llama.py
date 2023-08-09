@@ -33,6 +33,7 @@ from ...modeling_utils import PreTrainedModel
 from ...utils import add_start_docstrings, add_start_docstrings_to_model_forward, logging, replace_return_docstrings
 from .configuration_llama import LlamaConfig
 
+import torch_xla.debug.profiler as xp
 
 logger = logging.get_logger(__name__)
 
@@ -81,6 +82,7 @@ class LlamaRMSNorm(nn.Module):
         self.weight = nn.Parameter(torch.ones(hidden_size))
         self.variance_epsilon = eps
 
+    @xp.trace_me("LlamaRMSNorm")
     def forward(self, hidden_states):
         input_dtype = hidden_states.dtype
         hidden_states = hidden_states.to(torch.float32)
@@ -114,6 +116,7 @@ class LlamaRotaryEmbedding(torch.nn.Module):
         self.register_buffer("cos_cached", emb.cos()[None, None, :, :].to(dtype), persistent=False)
         self.register_buffer("sin_cached", emb.sin()[None, None, :, :].to(dtype), persistent=False)
 
+    @xp.trace_me("LlamaRotaryEmbedding")
     def forward(self, x, seq_len=None):
         # x: [bs, num_attention_heads, seq_len, head_size]
         if seq_len > self.max_seq_len_cached:
@@ -192,6 +195,8 @@ class LlamaMLP(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
+        self.spmd_fsdp_sharding = config.spmd_fsdp_sharding
+        self.spmd_debug = config.spmd_debug
         self.hidden_size = config.hidden_size
         self.intermediate_size = config.intermediate_size
         self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
@@ -199,8 +204,10 @@ class LlamaMLP(nn.Module):
         self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
         self.act_fn = ACT2FN[config.hidden_act]
 
+    @xp.trace_me("LlamaMLP")
     def forward(self, x):
         if self.config.pretraining_tp > 1:
+            assert False  # Shouldn't reach here
             slice = self.intermediate_size // self.config.pretraining_tp
             gate_proj_slices = self.gate_proj.weight.split(slice, dim=0)
             up_proj_slices = self.up_proj.weight.split(slice, dim=0)
@@ -217,7 +224,24 @@ class LlamaMLP(nn.Module):
             ]
             down_proj = sum(down_proj)
         else:
-            down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+            intermediate = self.act_fn(self.gate_proj(x)) * self.up_proj(x)
+            if self.spmd_fsdp_sharding:
+                # Apply 2D sharding:
+                # activation (data,, None, model)
+                import torch_xla.core.xla_model as xm
+                import torch_xla.experimental.xla_sharding as xs
+                import torch_xla.runtime as xr
+                import torch_xla
+                num_devices = xr.global_runtime_device_count()
+                device_ids = torch.arange(num_devices)
+                if self.spmd_debug:
+                    print('> Sharding intermediate', intermediate.shape)
+                mesh_shape = (num_devices,) + (1,) * (len(intermediate.shape) - 1)
+                mesh = xs.HybridMesh(ici_mesh_shape=tuple(mesh_shape))
+                xs.mark_sharding(intermediate, mesh, range(len(intermediate.shape)))
+                if self.spmd_debug:
+                    print(torch_xla._XLAC._get_xla_sharding_spec(intermediate))
+            down_proj = self.down_proj(intermediate)
 
         return down_proj
 
@@ -243,6 +267,7 @@ class LlamaAttention(nn.Module):
         # For PyTorch/XLA's SPMD 2D sharding
         assert config.spmd_2d_sharding & config.spmd_tensor_sharding == 0
         self.spmd_2d_sharding = config.spmd_2d_sharding + config.spmd_tensor_sharding
+        self.spmd_fsdp_sharding = config.spmd_fsdp_sharding
         self.spmd_debug = config.spmd_debug
         self.spmd_iota_mesh = config.spmd_iota_mesh
         self.hidden_size = config.hidden_size
@@ -283,6 +308,7 @@ class LlamaAttention(nn.Module):
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
 
+    @xp.trace_me("LlamaAttention")
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -315,6 +341,28 @@ class LlamaAttention(nn.Module):
             query_states = self.q_proj(hidden_states)
             key_states = self.k_proj(hidden_states)
             value_states = self.v_proj(hidden_states)
+
+        if self.spmd_fsdp_sharding:
+            import torch_xla.core.xla_model as xm
+            import torch_xla.experimental.xla_sharding as xs
+            import torch_xla.runtime as xr
+            import torch_xla
+            num_devices = xr.global_runtime_device_count()
+            device_ids = torch.arange(num_devices)
+            if self.spmd_debug:
+                print('> Sharding query_states', query_states.shape)
+                print('> Sharding key_states', key_states.shape)
+                print('> Sharding value_states', value_states.shape)
+            assert query_states.shape == key_states.shape and key_states.shape == value_states.shape
+            mesh_shape = (num_devices,) + (1,) * (len(query_states.shape) - 1)
+            mesh = xs.HybridMesh(ici_mesh_shape=tuple(mesh_shape))
+            xs.mark_sharding(query_states, mesh, range(len(query_states.shape)))
+            xs.mark_sharding(key_states, mesh, range(len(key_states.shape)))
+            xs.mark_sharding(value_states, mesh, range(len(value_states.shape)))
+            if self.spmd_debug:
+                print(torch_xla._XLAC._get_xla_sharding_spec(query_states))
+                print(torch_xla._XLAC._get_xla_sharding_spec(key_states))
+                print(torch_xla._XLAC._get_xla_sharding_spec(value_states))
 
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
@@ -410,6 +458,7 @@ class LlamaDecoderLayer(nn.Module):
         self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
+    @xp.trace_me("LlamaDecoderLayer")
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -634,6 +683,7 @@ class LlamaModel(LlamaPreTrainedModel):
 
         return combined_attention_mask
 
+    @xp.trace_me("LlamaModel")
     @add_start_docstrings_to_model_forward(LLAMA_INPUTS_DOCSTRING)
     def forward(
         self,
