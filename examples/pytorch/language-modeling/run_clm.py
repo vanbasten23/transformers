@@ -199,6 +199,14 @@ class ModelArguments:
             )
         },
     )
+    spmd_defer_init: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Use defer init",
+            )
+        },
+    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (self.config_name is not None or self.model_name_or_path is not None):
@@ -481,7 +489,11 @@ def main():
         assert model_args.spmd_2d_sharding == 0 or model_args.spmd_tensor_sharding == 0
     config.spmd_debug = model_args.spmd_debug
     config.spmd_iota_mesh = model_args.spmd_iota_mesh
-    with init_empty_weights():
+    import contextlib
+    context = contextlib.nullcontext()
+    if model_args.spmd_defer_init:
+        context = init_empty_weights()
+    with context:
         if model_args.model_name_or_path:
             torch_dtype = (
                 model_args.torch_dtype
@@ -515,7 +527,10 @@ def main():
     num_devices = xr.global_runtime_device_count()
     device_ids = torch.arange(num_devices)
     print('Using dtype', model_args.torch_dtype)
-    model = model.to(dtype=getattr(torch, model_args.torch_dtype))
+    if model_args.spmd_defer_init:
+        model = model.to(dtype=getattr(torch, model_args.torch_dtype))
+    else:
+        model = model.to(xm.xla_device(), dtype=getattr(torch, model_args.torch_dtype))
 
     def get_mesh(ici_mesh_shape, dcn_mesh_shape=None):
       if model_args.spmd_iota_mesh:
@@ -531,14 +546,15 @@ def main():
     # Convert the model from meta to XLA tensors one layer at a time to avoid
     # host-side OOM
     for name, param in model.state_dict().items():
-        # Create an tensor based on the meta tensor
-        param = torch.empty_like(param, device=xm.xla_device())
-        torch.nn.init.uniform_(param, a=-0.05, b=0.05)
-        # TODO(jonbolin): Can't load_state_dict when the module consists of meta tensors
-        path = re.sub(r'.(\d+)', r'[\1]', name)
-        assign = f'model.{path} = torch.nn.Parameter(param)'
-        # print(f'running "{assign}"')
-        exec(assign)
+        if model_args.spmd_defer_init:
+            # Create an tensor based on the meta tensor
+            param = torch.empty_like(param, device=xm.xla_device())
+            torch.nn.init.uniform_(param, a=-0.05, b=0.05)
+            # TODO(jonbolin): Can't load_state_dict when the module consists of meta tensors
+            path = re.sub(r'.(\d+)', r'[\1]', name)
+            assign = f'model.{path} = torch.nn.Parameter(param)'
+            # print(f'running "{assign}"')
+            exec(assign)
 
         # Mark sharding based on the model_args
         if model_args.spmd_fsdp_sharding:
