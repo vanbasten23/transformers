@@ -34,6 +34,10 @@ from ...utils import add_start_docstrings, add_start_docstrings_to_model_forward
 from .configuration_llama import LlamaConfig
 
 import torch_xla.debug.profiler as xp
+import torch_xla.core.xla_model as xm
+import torch_xla.experimental.xla_sharding as xs
+import torch_xla.runtime as xr
+import torch_xla
 
 logger = logging.get_logger(__name__)
 
@@ -190,19 +194,25 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
 
+def init_spmd(model, config):
+    num_devices = xr.global_runtime_device_count()
+    model.spmd_debug = config.spmd_debug
+    model.spmd_model_axis = config.spmd_model_axis
+    model.spmd_data_axis = num_devices // self.spmd_model_axis
+    assert self.spmd_data_axis * self.spmd_model_axis == num_devices
 
 class LlamaMLP(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.spmd_fsdp_sharding = config.spmd_fsdp_sharding
-        self.spmd_debug = config.spmd_debug
         self.hidden_size = config.hidden_size
         self.intermediate_size = config.intermediate_size
         self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
         self.act_fn = ACT2FN[config.hidden_act]
+
+        init_spmd(self, config)
 
     @xp.trace_me("LlamaMLP")
     def forward(self, x):
@@ -224,59 +234,36 @@ class LlamaMLP(nn.Module):
             ]
             down_proj = sum(down_proj)
         else:
+            data_model_mesh = xs.HybridMesh(ici_mesh_shape=(self.spmd_data_axis, 1, self.spmd_model_axis))
+
             up_proj = self.up_proj(x)
-            if self.spmd_fsdp_sharding:
-                # Apply 2D sharding:
-                # activation (data,, None, model)
-                import torch_xla.core.xla_model as xm
-                import torch_xla.experimental.xla_sharding as xs
-                import torch_xla.runtime as xr
-                import torch_xla
-                num_devices = xr.global_runtime_device_count()
-                device_ids = torch.arange(num_devices)
-                if self.spmd_debug:
-                    print('> Sharding up_proj', up_proj.shape)
-                mesh_shape = (num_devices,) + (1,) * (len(up_proj.shape) - 1)
-                mesh = xs.HybridMesh(ici_mesh_shape=tuple(mesh_shape))
-                xs.mark_sharding(up_proj, mesh, range(len(up_proj.shape)))
-                if self.spmd_debug:
-                    print(torch_xla._XLAC._get_xla_sharding_spec(up_proj))
+            # Apply 2D sharding:
+            # up_proj (batch, length, intermediate)
+            # mesh (data, None, model)
+            if self.spmd_debug:
+                print('> Sharding up_proj', up_proj.shape)
+            xs.mark_sharding(up_proj, data_model_mesh, range(len(up_proj.shape)))
+            if self.spmd_debug:
+                print(torch_xla._XLAC._get_xla_sharding_spec(up_proj))
 
             gate_proj = self.act_fn(self.gate_proj(x))
-            if self.spmd_fsdp_sharding:
-                # Apply 2D sharding:
-                # activation (data,, None, model)
-                import torch_xla.core.xla_model as xm
-                import torch_xla.experimental.xla_sharding as xs
-                import torch_xla.runtime as xr
-                import torch_xla
-                num_devices = xr.global_runtime_device_count()
-                device_ids = torch.arange(num_devices)
-                if self.spmd_debug:
-                    print('> Sharding gate_proj', gate_proj.shape)
-                mesh_shape = (num_devices,) + (1,) * (len(gate_proj.shape) - 1)
-                mesh = xs.HybridMesh(ici_mesh_shape=tuple(mesh_shape))
-                xs.mark_sharding(gate_proj, mesh, range(len(gate_proj.shape)))
-                if self.spmd_debug:
-                    print(torch_xla._XLAC._get_xla_sharding_spec(gate_proj))
+            # Apply 2D sharding:
+            # gate_proj (batch, length, intermediate)
+            # mesh (data, None, model)
+            if self.spmd_debug:
+                print('> Sharding gate_proj', gate_proj.shape)
+            xs.mark_sharding(up_proj, data_model_mesh, range(len(up_proj.shape)))
+            if self.spmd_debug:
+                print(torch_xla._XLAC._get_xla_sharding_spec(gate_proj))
 
             down_proj = self.down_proj(self.act_fn(gate_proj) * up_proj)
-            if self.spmd_fsdp_sharding:
-                # Apply 2D sharding:
-                # activation (data,, None, model)
-                import torch_xla.core.xla_model as xm
-                import torch_xla.experimental.xla_sharding as xs
-                import torch_xla.runtime as xr
-                import torch_xla
-                num_devices = xr.global_runtime_device_count()
-                device_ids = torch.arange(num_devices)
-                if self.spmd_debug:
-                    print('> Sharding down_proj', down_proj.shape)
-                mesh_shape = (num_devices,) + (1,) * (len(down_proj.shape) - 1)
-                mesh = xs.HybridMesh(ici_mesh_shape=tuple(mesh_shape))
-                xs.mark_sharding(down_proj, mesh, range(len(down_proj.shape)))
-                if self.spmd_debug:
-                    print(torch_xla._XLAC._get_xla_sharding_spec(down_proj))
+            # down_proj (batch, length, hidden)
+            # mesh (data, None, model)
+            if self.spmd_debug:
+                print('> Sharding down_proj', down_proj.shape)
+            xs.mark_sharding(down_proj, data_model_mesh, range(len(down_proj.shape)))
+            if self.spmd_debug:
+                print(torch_xla._XLAC._get_xla_sharding_spec(down_proj))
 
         return down_proj
 

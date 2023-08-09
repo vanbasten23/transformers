@@ -474,9 +474,11 @@ def main():
         )
 
     # Pass the 2d sharding config to the actual model.
-    config.spmd_2d_sharding = model_args.spmd_2d_sharding
-    config.spmd_tensor_sharding = model_args.spmd_tensor_sharding
-    config.spmd_fsdp_sharding = model_args.spmd_fsdp_sharding
+    config.spmd_model_axis = model_args.spmd_2d_sharding + model_args.spmd_tensor_sharding
+    if config.spmd_model_axis == 0:
+        config.spmd_model_axis = 1
+    else
+        assert model_args.spmd_2d_sharding == 0 or model_args.spmd_tensor_sharding == 0
     config.spmd_debug = model_args.spmd_debug
     config.spmd_iota_mesh = model_args.spmd_iota_mesh
     with init_empty_weights():
