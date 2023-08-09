@@ -651,12 +651,6 @@ class LlamaModel(LlamaPreTrainedModel):
 
     def __init__(self, config: LlamaConfig):
         super().__init__(config)
-        # For PyTorch/XLA's SPMD 2D sharding
-        assert config.spmd_2d_sharding & config.spmd_tensor_sharding == 0
-        self.spmd_2d_sharding = config.spmd_2d_sharding + config.spmd_tensor_sharding + config.spmd_fsdp_sharding
-        self.spmd_debug = config.spmd_debug
-        self.spmd_iota_mesh = config.spmd_iota_mesh
-
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
 
@@ -667,6 +661,8 @@ class LlamaModel(LlamaPreTrainedModel):
         self.gradient_checkpointing = False
         # Initialize weights and apply final processing
         self.post_init()
+
+        init_spmd(self, config)
 
     def get_input_embeddings(self):
         return self.embed_tokens
@@ -759,27 +755,18 @@ class LlamaModel(LlamaPreTrainedModel):
 
         # Is this the input to the model?
         hidden_states = inputs_embeds
-        if self.spmd_2d_sharding > 0:
-            # Apply 2D sharding:
-            # input (data,, None, model)
-            import torch_xla.core.xla_model as xm
-            import torch_xla.experimental.xla_sharding as xs
-            import torch_xla.runtime as xr
-            import torch_xla
-            num_devices = xr.global_runtime_device_count()
-            device_ids = torch.arange(num_devices)
-            if self.spmd_debug:
-                print('> Sharding hidden_states', hidden_states.shape)
-            model = self.spmd_2d_sharding
-            data = num_devices // model
-            assert model * data == num_devices
-            if self.spmd_iota_mesh:
-                mesh = xs.Mesh(device_ids, (data, 1, model))
-            else:
-                mesh = xs.HybridMesh(ici_mesh_shape=(data, 1, model))
-            xs.mark_sharding(hidden_states, mesh, (0, 1, 2))
-            if self.spmd_debug:
-                print(torch_xla._XLAC._get_xla_sharding_spec(hidden_states))
+        # Apply 2D sharding:
+        # TODO hidden_states ()
+        # mesh (data, None, model)
+        if self.spmd_iota_mesh:
+            data_model_mesh = xs.Mesh(device_ids, (self.spmd_data_axis, 1, self.spmd_model_axis))
+        else:
+            data_model_mesh = xs.HybridMesh(ici_mesh_shape=(self.spmd_data_axis, 1, self.spmd_model_axis))
+        if self.spmd_debug:
+            print('> Sharding hidden_states', hidden_states.shape)
+        xs.mark_sharding(hidden_states, data_model_mesh, (0, 1, 2))
+        if self.spmd_debug:
+            print(torch_xla._XLAC._get_xla_sharding_spec(hidden_states))
 
         if self.gradient_checkpointing and self.training:
             if use_cache:
