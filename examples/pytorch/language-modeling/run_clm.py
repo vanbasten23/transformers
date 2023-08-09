@@ -437,7 +437,7 @@ def main():
         import torch_xla.core.xla_model as xm
         from pprint import pprint
         from torch_xla.distributed.fsdp import XlaFullyShardedDataParallel as FSDP, checkpoint_module
-        fsdp_wrap = lambda m: FSDP(m.to(xm.xla_device()), compute_dtype=torch.bfloat16, shard_param_on_dim_0=True, pin_layout_in_collective_ops=True)
+        fsdp_wrap = lambda m: FSDP(m, compute_dtype=torch.bfloat16, shard_param_on_dim_0=True, pin_layout_in_collective_ops=True)
         import inspect
         forward_signature = inspect.signature(model.forward.__func__)
         logger.info("FSDP wrapping root model.")
