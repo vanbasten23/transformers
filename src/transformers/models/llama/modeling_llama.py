@@ -268,7 +268,7 @@ class LlamaMLP(nn.Module):
             if self.spmd_debug:
                 print(torch_xla._XLAC._get_xla_sharding_spec(gate_proj))
 
-            down_proj = self.down_proj(self.act_fn(gate_proj) * up_proj)
+            down_proj = self.down_proj(gate_proj * up_proj)
             # down_proj (batch, length, hidden)
             # mesh (data, None, model)
             if self.spmd_debug:
