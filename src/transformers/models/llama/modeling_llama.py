@@ -241,7 +241,8 @@ class LlamaAttention(nn.Module):
         super().__init__()
         self.config = config
         # For PyTorch/XLA's SPMD 2D sharding
-        self.spmd_2d_sharding = config.spmd_2d_sharding
+        assert config.spmd_2d_sharding & config.spmd_tensor_sharding == 0
+        self.spmd_2d_sharding = config.spmd_2d_sharding + config.spmd_tensor_sharding
         self.spmd_debug = config.spmd_debug
         self.hidden_size = config.hidden_size
         self.num_heads = config.num_attention_heads
@@ -582,7 +583,8 @@ class LlamaModel(LlamaPreTrainedModel):
     def __init__(self, config: LlamaConfig):
         super().__init__(config)
         # For PyTorch/XLA's SPMD 2D sharding
-        self.spmd_2d_sharding = config.spmd_2d_sharding
+        assert config.spmd_2d_sharding & config.spmd_tensor_sharding == 0
+        self.spmd_2d_sharding = config.spmd_2d_sharding + config.spmd_tensor_sharding
         self.spmd_debug = config.spmd_debug
 
         self.padding_idx = config.pad_token_id
