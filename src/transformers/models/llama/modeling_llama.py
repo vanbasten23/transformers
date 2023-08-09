@@ -364,7 +364,7 @@ class LlamaAttention(nn.Module):
         # Apply 2D sharding:
         # query_states (batch, length, hidden)
         # key_states (batch, length, hidden / attention_heads * key_value_heads)
-        # key_states (batch, length, hidden / attention_heads * key_value_heads)
+        # value_states (batch, length, hidden / attention_heads * key_value_heads)
         # mesh (data, None, model)
         if self.spmd_iota_mesh:
             data_model_mesh = xs.Mesh(device_ids, (self.spmd_data_axis, 1, self.spmd_model_axis))
@@ -452,10 +452,10 @@ class LlamaAttention(nn.Module):
             attn_weights = None
 
         # Apply 2D sharding:
-        # activations (batch, length, hidden)
+        # attn_output (batch, length, hidden)
         # mesh (data, None, model)
         if self.spmd_debug:
-            print('> Sharding activations', attn_output.shape)
+            print('> Sharding attn_output', attn_output.shape)
         xs.mark_sharding(attn_output, data_model_mesh, range(len(attn_output.shape)))
         if self.spmd_debug:
             print(torch_xla._XLAC._get_xla_sharding_spec(attn_output))
