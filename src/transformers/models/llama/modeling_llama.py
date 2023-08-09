@@ -301,7 +301,7 @@ class LlamaAttention(nn.Module):
         self.config = config
         # For PyTorch/XLA's SPMD 2D sharding
         assert config.spmd_2d_sharding & config.spmd_tensor_sharding == 0
-        self.spmd_2d_sharding = config.spmd_2d_sharding + config.spmd_tensor_sharding
+        self.spmd_2d_sharding = config.spmd_2d_sharding + config.spmd_tensor_sharding + config.spmd_fsdp_sharding
         self.spmd_fsdp_sharding = config.spmd_fsdp_sharding
         self.spmd_debug = config.spmd_debug
         self.spmd_iota_mesh = config.spmd_iota_mesh
@@ -421,6 +421,20 @@ class LlamaAttention(nn.Module):
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
+        if self.spmd_fsdp_sharding:
+            import torch_xla.core.xla_model as xm
+            import torch_xla.experimental.xla_sharding as xs
+            import torch_xla.runtime as xr
+            import torch_xla
+            num_devices = xr.global_runtime_device_count()
+            device_ids = torch.arange(num_devices)
+            if self.spmd_debug:
+                print('> Sharding attn_weights', attn_weights.shape)
+            mesh_shape = (num_devices,) + (1,) * (len(attn_weights.shape) - 1)
+            mesh = xs.HybridMesh(ici_mesh_shape=tuple(mesh_shape))
+            xs.mark_sharding(attn_weights, mesh, range(len(attn_weights.shape)))
+            if self.spmd_debug:
+                print(torch_xla._XLAC._get_xla_sharding_spec(attn_weights))
 
         if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
             raise ValueError(
