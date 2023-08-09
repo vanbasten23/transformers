@@ -467,7 +467,8 @@ def main():
     # Pass the 2d sharding config to the actual model.
     config.spmd_2d_sharding = model_args.spmd_2d_sharding
     config.spmd_debug = model_args.spmd_debug
-    with init_empty_weights():
+    import contextlib
+    with contextlib.nullcontext(): #init_empty_weights():
         if model_args.model_name_or_path:
             torch_dtype = (
                 model_args.torch_dtype
@@ -501,20 +502,20 @@ def main():
     num_devices = xr.global_runtime_device_count()
     device_ids = torch.arange(num_devices)
     print('Using dtype', model_args.torch_dtype)
-    model = model.to(dtype=getattr(torch, model_args.torch_dtype))
+    model = model.to(xm.xla_device(), dtype=getattr(torch, model_args.torch_dtype))
 
     # Convert the model from meta to XLA tensors one layer at a time to avoid
     # host-side OOM
     sharded_state_dict = {}
     for name, param in model.state_dict().items():
       # Create an tensor based on the meta tensor
-      sharded_state_dict[name] = torch.randn_like(param, device=xm.xla_device())
-      param = sharded_state_dict[name]
-      # TODO(jonbolin): Can't load_state_dict when the module consists of meta tensors
-      path = re.sub(r'.(\d+)', r'[\1]', name)
-      assign = f'model.{path} = torch.nn.Parameter(param)'
-      print(f'running "{assign}"')
-      exec(assign)
+      #sharded_state_dict[name] = torch.randn_like(param, device=xm.xla_device())
+      #param = sharded_state_dict[name]
+      ## TODO(jonbolin): Can't load_state_dict when the module consists of meta tensors
+      #path = re.sub(r'.(\d+)', r'[\1]', name)
+      #assign = f'model.{path} = torch.nn.Parameter(param)'
+      #print(f'running "{assign}"')
+      #exec(assign)
 
       # Mark sharding based on the model_args
       if model_args.spmd_fsdp_sharding:
