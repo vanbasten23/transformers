@@ -544,6 +544,11 @@ def main():
             mesh_shape = (num_devices,) + (1,) * (len(param.shape) - 1)
             print('> [FSDP] Sharding tensor', name, param.shape)
             mesh = xs.HybridMesh(ici_mesh_shape=tuple(mesh_shape))
+            # We don't care about layernorm's weights, and
+            # LLaMA doesn't use biases.
+            if len(param.shape) == 1:
+                continue
+            assert len(param.shape) == 2
             xs.mark_sharding(param, mesh, range(len(param.shape)))
         elif model_args.spmd_tensor_sharding > 0:
             # Shard all parameters along two axis except 1D tensors
