@@ -199,8 +199,8 @@ def init_spmd(model, config):
     num_devices = xr.global_runtime_device_count()
     model.spmd_debug = config.spmd_debug
     model.spmd_model_axis = config.spmd_model_axis
-    model.spmd_data_axis = num_devices // self.spmd_model_axis
-    assert self.spmd_data_axis * self.spmd_model_axis == num_devices
+    model.spmd_data_axis = num_devices // model.spmd_model_axis
+    assert model.spmd_data_axis * model.spmd_model_axis == num_devices
     model.spmd_iota_mesh = config.spmd_iota_mesh
 
 class LlamaMLP(nn.Module):
@@ -253,7 +253,7 @@ class LlamaMLP(nn.Module):
             # mesh (data, None, model)
             if self.spmd_debug:
                 print('> Sharding gate_proj', gate_proj.shape)
-            xs.mark_sharding(up_proj, data_model_mesh, range(len(up_proj.shape)))
+            xs.mark_sharding(gate_proj, data_model_mesh, range(len(up_proj.shape)))
             if self.spmd_debug:
                 print(torch_xla._XLAC._get_xla_sharding_spec(gate_proj))
 
@@ -363,7 +363,6 @@ class LlamaAttention(nn.Module):
 
         # Apply 2D sharding:
         # query_states (batch, length, hidden)
-        # TODO: need to double check QKA.
         # key_states (batch, length, hidden / attention_heads * key_value_heads)
         # key_states (batch, length, hidden / attention_heads * key_value_heads)
         # mesh (data, None, model)
@@ -412,7 +411,7 @@ class LlamaAttention(nn.Module):
         if self.spmd_debug:
             print('> Sharding attn_weights', attn_weights.shape)
         attn_mesh = xs.HybridMesh(ici_mesh_shape=(self.spmd_data_axis, self.spmd_model_axis, 1, 1))
-        xs.mark_sharding(attn_weights, mesh, range(len(attn_weights.shape)))
+        xs.mark_sharding(attn_weights, attn_mesh, range(len(attn_weights.shape)))
         if self.spmd_debug:
             print(torch_xla._XLAC._get_xla_sharding_spec(attn_weights))
 
@@ -453,7 +452,7 @@ class LlamaAttention(nn.Module):
             attn_weights = None
 
         # Apply 2D sharding:
-        # TODO activations ()
+        # activations (batch, length, hidden)
         # mesh (data, None, model)
         if self.spmd_debug:
             print('> Sharding activations', attn_output.shape)
@@ -756,7 +755,7 @@ class LlamaModel(LlamaPreTrainedModel):
         # Is this the input to the model?
         hidden_states = inputs_embeds
         # Apply 2D sharding:
-        # TODO hidden_states ()
+        # hidden_states (batch, length, hidden)
         # mesh (data, None, model)
         if self.spmd_iota_mesh:
             data_model_mesh = xs.Mesh(device_ids, (self.spmd_data_axis, 1, self.spmd_model_axis))
