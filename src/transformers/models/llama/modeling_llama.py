@@ -209,6 +209,7 @@ def get_mesh(spmd_iota_mesh, ici_mesh_shape, dcn_mesh_shape=None):
             assert len(ici_mesh_shape) == len(dcn_mesh_shape)
             for i in range(len(dcn_mesh_shape)):
                 ici_mesh_shape[i] *= dcn_mesh_shape[i]
+        num_devices = xr.global_runtime_device_count()
         device_ids = torch.arange(num_devices)
         return xs.Mesh(device_ids, ici_mesh_shape)
     else:
