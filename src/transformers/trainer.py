@@ -1467,15 +1467,16 @@ class Trainer:
                 return xs.HybridMesh(ici_mesh_shape=ici_mesh_shape, dcn_mesh_shape=dcn_mesh_shape)
 
             sharding_spec = None
+            dcn = self.args.spmd_dcn_parallelism
             if self.args.spmd_batch_sharding:
-                mesh = get_mesh((num_devices, 1))
+                mesh = get_mesh((num_devices // dcn, 1), (dcn, 1))
                 sharding_spec = xs.ShardingSpec(mesh, (0, 1))
             elif self.args.spmd_tensor_sharding > 0 or self.args.spmd_2d_sharding > 0:
                 assert self.args.spmd_tensor_sharding == 0 or self.args.spmd_2d_sharding == 0
                 tensor = self.args.spmd_tensor_sharding + self.args.spmd_2d_sharding
                 # Data should be fully sharded along every axis except for `tensor`
-                fsdp = num_devices // tensor
-                mesh = get_mesh((fsdp, tensor))
+                fsdp = num_devices // tensor // dcn
+                mesh = get_mesh((fsdp, tensor), (dcn, 1))
                 partition_spec = (0, None)
                 sharding_spec = xs.ShardingSpec(mesh, partition_spec)
 
