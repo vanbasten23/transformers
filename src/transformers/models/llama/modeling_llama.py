@@ -255,7 +255,7 @@ class LlamaMLP(nn.Module):
             data_model_mesh = get_mesh(self.spmd_iota_mesh, (self.spmd_data_axis, 1, self.spmd_model_axis))
             if self.spmd_debug:
                 print('> Sharding up_proj', up_proj.shape)
-            up_proj = xs.mark_sharding(up_proj, data_model_mesh, range(len(up_proj.shape)))
+            xs.mark_sharding(up_proj, data_model_mesh, range(len(up_proj.shape)))
             if self.spmd_debug:
                 print(torch_xla._XLAC._get_xla_sharding_spec(up_proj))
 
@@ -265,7 +265,7 @@ class LlamaMLP(nn.Module):
             # mesh (data, None, model)
             if self.spmd_debug:
                 print('> Sharding gate_proj', gate_proj.shape)
-            gate_proj = xs.mark_sharding(gate_proj, data_model_mesh, range(len(up_proj.shape)))
+            xs.mark_sharding(gate_proj, data_model_mesh, range(len(up_proj.shape)))
             if self.spmd_debug:
                 print(torch_xla._XLAC._get_xla_sharding_spec(gate_proj))
 
@@ -274,7 +274,7 @@ class LlamaMLP(nn.Module):
             # mesh (data, None, model)
             if self.spmd_debug:
                 print('> Sharding down_proj', down_proj.shape)
-            down_proj = xs.mark_sharding(down_proj, data_model_mesh, range(len(down_proj.shape)))
+            xs.mark_sharding(down_proj, data_model_mesh, range(len(down_proj.shape)))
             if self.spmd_debug:
                 print(torch_xla._XLAC._get_xla_sharding_spec(down_proj))
 
@@ -383,9 +383,9 @@ class LlamaAttention(nn.Module):
             print('> Sharding query_states', query_states.shape)
             print('> Sharding key_states', key_states.shape)
             print('> Sharding value_states', value_states.shape)
-        query_states = xs.mark_sharding(query_states, data_model_mesh, range(len(query_states.shape)))
-        key_states = xs.mark_sharding(key_states, data_model_mesh, range(len(key_states.shape)))
-        value_states = xs.mark_sharding(value_states, data_model_mesh, range(len(value_states.shape)))
+        xs.mark_sharding(query_states, data_model_mesh, range(len(query_states.shape)))
+        xs.mark_sharding(key_states, data_model_mesh, range(len(key_states.shape)))
+        xs.mark_sharding(value_states, data_model_mesh, range(len(value_states.shape)))
         if self.spmd_debug:
             print(torch_xla._XLAC._get_xla_sharding_spec(query_states))
             print(torch_xla._XLAC._get_xla_sharding_spec(key_states))
@@ -420,7 +420,7 @@ class LlamaAttention(nn.Module):
         if self.spmd_debug:
             print('> Sharding attn_weights', attn_weights.shape)
         attn_mesh = get_mesh(self.spmd_iota_mesh, (self.spmd_data_axis, self.spmd_model_axis, 1, 1))
-        attn_weights = xs.mark_sharding(attn_weights, attn_mesh, range(len(attn_weights.shape)))
+        xs.mark_sharding(attn_weights, attn_mesh, range(len(attn_weights.shape)))
         if self.spmd_debug:
             print(torch_xla._XLAC._get_xla_sharding_spec(attn_weights))
 
@@ -465,7 +465,7 @@ class LlamaAttention(nn.Module):
         # mesh (data, None, model)
         if self.spmd_debug:
             print('> Sharding attn_output', attn_output.shape)
-        attn_output = xs.mark_sharding(attn_output, data_model_mesh, range(len(attn_output.shape)))
+        xs.mark_sharding(attn_output, data_model_mesh, range(len(attn_output.shape)))
         if self.spmd_debug:
             print(torch_xla._XLAC._get_xla_sharding_spec(attn_output))
 
@@ -769,7 +769,7 @@ class LlamaModel(LlamaPreTrainedModel):
         data_model_mesh = get_mesh(self.spmd_iota_mesh, (self.spmd_data_axis, 1, self.spmd_model_axis))
         if self.spmd_debug:
             print('> Sharding hidden_states', hidden_states.shape)
-        hidden_states = xs.mark_sharding(hidden_states, data_model_mesh, (0, 1, 2))
+        xs.mark_sharding(hidden_states, data_model_mesh, (0, 1, 2))
         if self.spmd_debug:
             print(torch_xla._XLAC._get_xla_sharding_spec(hidden_states))
 
