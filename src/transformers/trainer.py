@@ -1458,11 +1458,11 @@ class Trainer:
 
             def get_mesh(ici_mesh_shape, dcn_mesh_shape=None):
               if self.args.spmd_iota_mesh:
+                mesh_shape = ici_mesh_shape
                 if dcn_mesh_shape is not None:
                   assert len(ici_mesh_shape) == len(dcn_mesh_shape)
-                  for i in range(len(dcn_mesh_shape)):
-                    ici_mesh_shape[i] *= dcn_mesh_shape[i]
-                return xs.Mesh(device_ids, ici_mesh_shape)
+                  mesh_shape = tuple(i * d for i, d in zip(ici_mesh_shape, dcn_mesh_shape))
+                return xs.Mesh(device_ids, mesh_shape)
               else:
                 return xs.HybridMesh(ici_mesh_shape=ici_mesh_shape, dcn_mesh_shape=dcn_mesh_shape)
 
@@ -1473,6 +1473,7 @@ class Trainer:
             elif self.args.spmd_tensor_sharding > 0 or self.args.spmd_2d_sharding > 0:
                 assert self.args.spmd_tensor_sharding == 0 or self.args.spmd_2d_sharding == 0
                 tensor = self.args.spmd_tensor_sharding + self.args.spmd_2d_sharding
+                # Data should be fully sharded along every axis except for `tensor`
                 fsdp = num_devices // tensor
                 mesh = get_mesh((fsdp, tensor))
                 partition_spec = (0, None)

@@ -151,6 +151,14 @@ class ModelArguments:
             )
         },
     )
+    spmd_dcn_parallelism: int = field(
+        default=1,
+        metadata={
+            "help": (
+                "Number of slices to run in data parallel"
+            )
+        },
+    )
     spmd_grad_chkpt: bool = field(
         default=False,
         metadata={
@@ -310,6 +318,7 @@ def main():
     training_args.spmd_fsdp_sharding = model_args.spmd_fsdp_sharding
     training_args.spmd_tensor_sharding = model_args.spmd_tensor_sharding
     training_args.spmd_2d_sharding = model_args.spmd_2d_sharding
+    training_args.spmd_dcn_parallelism = model_args.spmd_dcn_parallelism
     training_args.spmd_iota_mesh = model_args.spmd_iota_mesh
 
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
@@ -487,6 +496,7 @@ def main():
         config.spmd_model_axis = 1
     else:
         assert model_args.spmd_2d_sharding == 0 or model_args.spmd_tensor_sharding == 0
+    config.spmd_dcn_parallelism = model_args.spmd_dcn_parallelism
     config.spmd_debug = model_args.spmd_debug
     config.spmd_iota_mesh = model_args.spmd_iota_mesh
     import contextlib
@@ -526,6 +536,7 @@ def main():
     import torch_xla.runtime as xr
     num_devices = xr.global_runtime_device_count()
     device_ids = torch.arange(num_devices)
+    dcn = model_args.spmd_dcn_parallelism
     print('Using dtype', model_args.torch_dtype)
     if model_args.spmd_defer_init:
         model = model.to(dtype=getattr(torch, model_args.torch_dtype))
@@ -534,12 +545,11 @@ def main():
 
     def get_mesh(ici_mesh_shape, dcn_mesh_shape=None):
       if model_args.spmd_iota_mesh:
+        mesh_shape = ici_mesh_shape
         if dcn_mesh_shape is not None:
           assert len(ici_mesh_shape) == len(dcn_mesh_shape)
-          for i in range(len(dcn_mesh_shape)):
-            ici_mesh_shape[i] *= dcn_mesh_shape[i]
-        device_ids = torch.arange(num_devices)
-        return xs.Mesh(device_ids, ici_mesh_shape)
+          mesh_shape = tuple(i * d for i, d in zip(ici_mesh_shape, dcn_mesh_shape))
+        return xs.Mesh(device_ids, mesh_shape)
       else:
         return xs.HybridMesh(ici_mesh_shape=ici_mesh_shape, dcn_mesh_shape=dcn_mesh_shape)
 
@@ -553,33 +563,40 @@ def main():
             # TODO(jonbolin): Can't load_state_dict when the module consists of meta tensors
             path = re.sub(r'.(\d+)', r'[\1]', name)
             assign = f'model.{path} = torch.nn.Parameter(param)'
-            # print(f'running "{assign}"')
             exec(assign)
 
         # Mark sharding based on the model_args
         if model_args.spmd_fsdp_sharding:
-            import numpy as np
-            mesh_shape = (num_devices,) + (1,) * (len(param.shape) - 1)
-            print('> [FSDP] Sharding tensor', name, param.shape)
-            mesh = get_mesh(tuple(mesh_shape))
             # We don't care about layernorm's weights, and
             # LLaMA doesn't use biases.
             if len(param.shape) == 1:
                 continue
             assert len(param.shape) == 2
-            xs.mark_sharding(param, mesh, range(len(param.shape)))
+
+            mesh_shape = (num_devices // dcn,) + (1,) * (len(param.shape) - 1)
+
+            # Place DCN parallelism on an independent axis
+            dcn_mesh_shape = (dcn,) + (1,) * len(param.shape)
+            ici_mesh_shape = (1,) + mesh_shape
+            mesh = get_mesh(ici_mesh_shape, dcn_mesh_shape)
+            # Specify all non-DCN axes in the partition spec for partial
+            # replication along the DCN axis.
+            partition_spec = range(1, 1 + len(param.shape))
+            print('> [FSDP] Sharding tensor', name, param.shape, mesh.get_logical_mesh().shape, partition_spec)
+            xs.mark_sharding(param, mesh, partition_spec)
         elif model_args.spmd_tensor_sharding > 0:
             # Shard all parameters along two axis except 1D tensors
-            print('> [TP] Sharding tensor', name, param.shape)
-            tensor = model_args.spmd_tensor_sharding
-            fsdp = num_devices // tensor
-            assert fsdp * tensor == num_devices
-            mesh = get_mesh((fsdp, tensor))
             # We don't care about layernorm's weights, and
             # LLaMA doesn't use biases.
             if len(param.shape) == 1:
                 continue
             assert len(param.shape) == 2
+            tensor = model_args.spmd_tensor_sharding
+            fsdp = num_devices // tensor // dcn
+            assert fsdp * tensor * dcn == num_devices
+            mesh = get_mesh((1, fsdp, tensor), (dcn, 1, 1))
+            partition_spec = range(1, 1 + len(param.shape))
+            print('> [TP] Sharding tensor', name, param.shape, mesh.get_logical_mesh().shape, partition_spec)
             xs.mark_sharding(param, mesh, range(len(param.shape)))
         elif model_args.spmd_2d_sharding > 0:
             # Apply 2D sharding:
@@ -588,13 +605,12 @@ def main():
             # attn O (model, data)
             # mlp gate, up (model, data)
             # mlp down (data, model)
-            print('> [2D] Sharding tensor', name, param.shape)
             mod = model_args.spmd_2d_sharding
-            data = num_devices // mod
-            assert mod * data == num_devices
-            mesh = get_mesh((data, mod))
-            data_model = (0, 1)
-            model_data = (1, 0)
+            data = num_devices // mod // dcn
+            assert mod * data * dcn == num_devices
+            mesh = get_mesh((1, data, mod), (dcn, 1, 1))
+            data_model = (1, 2)
+            model_data = (2, 1)
 
             # We don't care about layernorm's weights, and
             # LLaMA doesn't use biases.
@@ -602,17 +618,20 @@ def main():
                 continue
 
             if 'embed_tokens' in name:
-                xs.mark_sharding(param, mesh, model_data)
+                partition_spec = model_data
             elif 'q_proj' in name or 'k_proj' in name or 'v_proj' in name:
-                xs.mark_sharding(param, mesh, data_model)
+                partition_spec = data_model
             elif 'o_proj' in name:
-                xs.mark_sharding(param, mesh, model_data)
+                partition_spec = model_data
             elif 'gate_proj' in name or 'up_proj' in name:
-                xs.mark_sharding(param, mesh, model_data)
+                partition_spec = model_data
             elif 'down_proj' in name:
-                xs.mark_sharding(param, mesh, data_model)
+                partition_spec = data_model
             elif 'lm_head' in name:  # Not sure what this is but has the same shape as embed_tokens
-                xs.mark_sharding(param, mesh, model_data)
+                partition_spec = model_data
+
+            print('> [2D] Sharding tensor', name, param.shape, mesh.get_logical_mesh().shape, partition_spec)
+            xs.mark_sharding(param, mesh, partition_spec)
 
         import torch_xla
         print(torch_xla._XLAC._get_xla_sharding_spec(param))
