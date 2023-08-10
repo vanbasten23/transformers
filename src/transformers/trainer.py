@@ -840,7 +840,7 @@ class Trainer:
             dataloader_params["drop_last"] = self.args.dataloader_drop_last
             dataloader_params["worker_init_fn"] = seed_worker
 
-        return self.accelerator.prepare(DataLoader(train_dataset, **dataloader_params))
+        return DataLoader(train_dataset, **dataloader_params)
 
     def _get_eval_sampler(self, eval_dataset: Dataset) -> Optional[torch.utils.data.Sampler]:
         # Deprecated code
