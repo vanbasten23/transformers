@@ -32,7 +32,7 @@ from typing import Optional
 import datasets
 import evaluate
 import torch
-from datasets import load_dataset
+from datasets import concatenate_datasets, load_dataset
 
 import torch_xla.debug.profiler as xp
 import transformers
@@ -306,6 +306,11 @@ def main():
             use_auth_token=True if model_args.use_auth_token else None,
             streaming=data_args.streaming,
         )
+        # HACK: Augment dataset by 2 times
+        augmented_factor = 2
+        logging.info("augmenting dataset to {} times".format(augmented_factor))
+        combined_train = concatenate_datasets([raw_datasets['train'], raw_datasets['train']])
+        raw_datasets['train'] = combined_train
         if "validation" not in raw_datasets.keys():
             raw_datasets["validation"] = load_dataset(
                 data_args.dataset_name,
