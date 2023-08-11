@@ -210,6 +210,10 @@ class DataTrainingArguments:
     keep_linebreaks: bool = field(
         default=True, metadata={"help": "Whether to keep line breaks when using TXT files or not."}
     )
+    augment_factor: Optional[int] = field(
+        default=None,
+        metadata={"help": "Augmentation factor to augment dataset by duplication."},
+    )
 
     def __post_init__(self):
         if self.streaming:
@@ -306,11 +310,15 @@ def main():
             use_auth_token=True if model_args.use_auth_token else None,
             streaming=data_args.streaming,
         )
-        # HACK: Augment dataset by 2 times
-        augmented_factor = 2
-        logging.info("augmenting dataset to {} times".format(augmented_factor))
-        combined_train = concatenate_datasets([raw_datasets['train'], raw_datasets['train']])
-        raw_datasets['train'] = combined_train
+        # HACK: Augment dataset, only augment training split.
+        if data_args.augment_factor is not None:
+            augment_factor = data_args.augment_factor
+            augment_list = []
+            for _ in range(augment_factor):
+                augment_list.append(raw_datasets['train'])
+            logging.info("augmenting dataset to {} times".format(augment_factor))
+            combined_train = concatenate_datasets(augment_list)
+            raw_datasets['train'] = combined_train
         if "validation" not in raw_datasets.keys():
             raw_datasets["validation"] = load_dataset(
                 data_args.dataset_name,
