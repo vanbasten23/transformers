@@ -1801,7 +1801,7 @@ class Trainer:
 
                 if step == profile_step and epoch == profile_epoch:
                     from torch_xla import runtime as xr
-                    if is_torch_tpu_available() and xm.is_master_ordinal() and xr.host_index == 0:
+                    if is_torch_tpu_available() and xr.host_index() == 0 and xm.is_master_ordinal():
                         logger.info("start profiling")
                         trace = lambda: xp.trace('127.0.0.1:9012', profile_logdir or tempfile.mkdtemp(), profile_duration or 20000)
                         Thread(target=trace).start()
