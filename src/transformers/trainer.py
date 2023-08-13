@@ -1814,6 +1814,9 @@ class Trainer:
             profile_duration = int(os.environ.get('PROFILE_DURATION_MS', 20000))
             profile_logdir = os.environ.get('PROFILE_LOGDIR', None)
             for step, inputs in enumerate(epoch_iterator):
+                # if step > 0:
+                #     break
+
                 if step == 0 and epoch == 0:
                     print('input sharding', {k: (v.shape, torch_xla._XLAC._get_xla_sharding_spec(v)) for k, v in inputs.items()})
                 total_batched_samples += 1
@@ -1940,6 +1943,25 @@ class Trainer:
 
                 if self.control.should_epoch_stop or self.control.should_training_stop:
                     break
+
+                # Shard the optimizer, most optimizers are inited after optimizer.step()
+                optimizer_raw_states = [raw_state for _, raw_state in self.optimizer.optimizer.state.items()]
+                for raw_state in optimizer_raw_states:
+                    for name, state in raw_state.items():
+                        if isinstance(state, torch.Tensor):
+                            print(name, state.shape)
+
+                            import torch_xla.experimental.xla_sharding as xs
+                            import torch_xla.runtime as xr
+                            num_devices = xr.global_runtime_device_count()
+                            device_ids = np.arange(num_devices)
+                            # Try forcing replications of rank 1 tensors.
+                            if len(state.shape) == 1:
+                                shape =  (num_devices,)
+                                mesh = xs.HybridMesh(ici_mesh_shape=shape)
+                                xs.mark_sharding(state, mesh, (None,))
+                                print(torch_xla._XLAC._get_xla_sharding_spec(state))
+
             if step < 0:
                 logger.warning(
                     "There seems to be not a single sample in your epoch_iterator, stopping training at step"
