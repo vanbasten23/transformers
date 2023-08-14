@@ -1961,7 +1961,6 @@ class Trainer:
                             import torch_xla.experimental.xla_sharding as xs
                             import torch_xla.runtime as xr
                             num_devices = xr.global_runtime_device_count()
-                            device_ids = np.arange(num_devices)
                             # Try forcing replications of rank 1 tensors.
                             if len(state.shape) == 1:
                                 shape =  (num_devices,)
@@ -1976,6 +1975,8 @@ class Trainer:
 
                 outputs = tensors + optimizer_states + [tr_loss]
                 for output in outputs:
+                    if len(state.shape) > 0:
+                        torch_xla._XLAC._xla_custom_sharding(output)
                     if self.args.spmd_debug:
                         print("output:", output.shape, torch_xla._XLAC._get_xla_sharding_spec(output))
                 torch_xla._XLAC._xla_sync_multi(outputs, devices=[], wait=False)
