@@ -339,6 +339,7 @@ def rotate_half(x):
 
 
 # Copied from transformers.models.gpt_neox.modeling_gpt_neox.apply_rotary_pos_emb
+@xp.trace_me("rotary_emb")
 def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
     cos = cos[position_ids].unsqueeze(1)  # [seq_len, dim] -> [batch_size, 1, seq_len, head_dim]
     sin = sin[position_ids].unsqueeze(1)
@@ -568,9 +569,8 @@ class LlamaAttention(nn.Module):
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
             kv_seq_len += past_key_value[0].shape[-2]
-        # TODO: Disable rotary embedding for now.
-        # cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        # query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
         if past_key_value is not None:
             # reuse k, v, self_attention
