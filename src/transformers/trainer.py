@@ -1814,8 +1814,8 @@ class Trainer:
             profile_duration = int(os.environ.get('PROFILE_DURATION_MS', 20000))
             profile_logdir = os.environ.get('PROFILE_LOGDIR', None)
             for step, inputs in enumerate(epoch_iterator):
-                if step > 0:
-                    break
+                # if step > 0:
+                #     break
 
                 if step == 0 and epoch == 0:
                     print('input sharding', {k: (v.shape, torch_xla._XLAC._get_xla_sharding_spec(v)) for k, v in inputs.items()})
@@ -1927,10 +1927,11 @@ class Trainer:
                         self.optimizer.step()
                         optimizer_was_run = not self.accelerator.optimizer_step_was_skipped
 
-                    if optimizer_was_run:
-                        # Delay optimizer scheduling until metrics are generated
-                        if not isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
-                            self.lr_scheduler.step()
+                    # TODO(alanwaketan): Disable the scheduler
+                    # if optimizer_was_run:
+                    #     # Delay optimizer scheduling until metrics are generated
+                    #     if not isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                    #         self.lr_scheduler.step()
 
                     model.zero_grad()
                     self.state.global_step += 1
@@ -1944,6 +1945,10 @@ class Trainer:
                 if self.control.should_epoch_stop or self.control.should_training_stop:
                     break
 
+                # Let's only materialize the weights, optimzier's moving averages for the grad, loss
+                # such that we shard both the input and output and avoid recompilation.
+                tensors = [param for _, param in model.named_parameters()]
+                optimizer_states = []
                 # Shard the optimizer, most optimizers are inited after optimizer.step()
                 for _, raw_state in self.optimizer.optimizer.state.items():
                     for name, state in raw_state.items():
@@ -1966,6 +1971,15 @@ class Trainer:
                                     print(torch_xla._XLAC._get_xla_sharding_spec(state))
                             else:
                                 assert len(state.shape) == 0
+
+                            optimizer_states.append(state)
+
+                outputs = tensors + optimizer_states + [tr_loss]
+                for output in outputs:
+                    if self.args.spmd_debug:
+                        print("output:", output.shape, torch_xla._XLAC._get_xla_sharding_spec(output))
+                torch_xla._XLAC._xla_sync_multi(outputs, devices=[], wait=False)
+                torch_xla._XLAC._clear_pending_irs(str(xm.xla_device()))
 
             if step < 0:
                 logger.warning(
