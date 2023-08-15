@@ -1815,6 +1815,13 @@ class Trainer:
             profile_logdir = os.environ.get('PROFILE_LOGDIR', None)
 
 
+            # Initialize optimizer state
+            for name, param in model.named_parameters():
+                param.grad = torch.autograd.Variable(param.data.new(param.size()).zero_())
+                param.grad.requires_grad_(False)
+            self.optimizer.step()
+            model.zero_grad()
+
             for step, inputs in enumerate(epoch_iterator):
                 # if step > 0:
                 #     break
