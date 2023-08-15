@@ -543,6 +543,20 @@ def main():
       else:
         return xs.HybridMesh(ici_mesh_shape=ici_mesh_shape, dcn_mesh_shape=dcn_mesh_shape)
 
+    import re, collections, json
+    with open('/tmp/home/shardings.json', 'r') as f:
+        shardings = json.loads(f.read())['model'] # Only sharding the model here
+
+    import torch_xla.experimental.xla_sharding as xs
+    pat = re.compile(r'{devices=\[([0-9,]+)\]([0-9,]+)')
+    def shard_from_spec(param, spec):
+        # spec will be {devices=[...]...} if sharded
+        m = pat.match(spec)
+        if m:
+            mesh = eval(f'xs.Mesh([{m.group(2)}], [{m.group(1)}])')
+            xs.mark_sharding(param, mesh, range(len(param.shape)))
+        return param
+
     # Convert the model from meta to XLA tensors one layer at a time to avoid
     # host-side OOM
     for name, param in model.state_dict().items():
@@ -589,31 +603,32 @@ def main():
             # attn O (model, data)
             # mlp gate, up (model, data)
             # mlp down (data, model)
-            print('> [2D] Sharding tensor', name, param.shape)
-            mod = model_args.spmd_2d_sharding
-            data = num_devices // mod
-            assert mod * data == num_devices
-            mesh = get_mesh((data, mod))
-            data_model = (0, 1)
-            model_data = (1, 0)
+            #print('> [2D] Sharding tensor', name, param.shape)
+            #mod = model_args.spmd_2d_sharding
+            #data = num_devices // mod
+            #assert mod * data == num_devices
+            #mesh = get_mesh((data, mod))
+            #data_model = (0, 1)
+            #model_data = (1, 0)
 
-            # We don't care about layernorm's weights, and
-            # LLaMA doesn't use biases.
-            if len(param.shape) == 1:
-                continue
+            ## We don't care about layernorm's weights, and
+            ## LLaMA doesn't use biases.
+            #if len(param.shape) == 1:
+            #    continue
 
-            if 'embed_tokens' in name:
-                xs.mark_sharding(param, mesh, model_data)
-            elif 'q_proj' in name or 'k_proj' in name or 'v_proj' in name:
-                xs.mark_sharding(param, mesh, data_model)
-            elif 'o_proj' in name:
-                xs.mark_sharding(param, mesh, model_data)
-            elif 'gate_proj' in name or 'up_proj' in name:
-                xs.mark_sharding(param, mesh, model_data)
-            elif 'down_proj' in name:
-                xs.mark_sharding(param, mesh, data_model)
-            elif 'lm_head' in name:  # Not sure what this is but has the same shape as embed_tokens
-                xs.mark_sharding(param, mesh, model_data)
+            #if 'embed_tokens' in name:
+            #    xs.mark_sharding(param, mesh, model_data)
+            #elif 'q_proj' in name or 'k_proj' in name or 'v_proj' in name:
+            #    xs.mark_sharding(param, mesh, data_model)
+            #elif 'o_proj' in name:
+            #    xs.mark_sharding(param, mesh, model_data)
+            #elif 'gate_proj' in name or 'up_proj' in name:
+            #    xs.mark_sharding(param, mesh, model_data)
+            #elif 'down_proj' in name:
+            #    xs.mark_sharding(param, mesh, data_model)
+            #elif 'lm_head' in name:  # Not sure what this is but has the same shape as embed_tokens
+            #    xs.mark_sharding(param, mesh, model_data)
+            shard_from_spec(param, shardings[name])
 
         import torch_xla
         print(torch_xla._XLAC._get_xla_sharding_spec(param))

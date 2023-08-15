@@ -1817,24 +1817,6 @@ class Trainer:
                 if step == 0 and epoch == 0:
                     print('input sharding', {k: (v.shape, torch_xla._XLAC._get_xla_sharding_spec(v)) for k, v in inputs.items()})
 
-                # BEGIN SHARDING EXPERIMENT
-                sd = {'model': model.state_dict(), 'optim': self.optimizer.state_dict()}
-                def sharding(x):
-                    if isinstance(x, torch.Tensor):
-                        return torch_xla._XLAC._get_xla_sharding_spec(x)
-                    return 'nontensor'
-                from torch.utils._pytree import tree_map
-                shardings = tree_map(sharding, sd)
-                import json
-                try:
-                    os.mkdir('/tmp/home/shardings')
-                except:
-                    pass
-                with open(f'/tmp/home/shardings/sharding_{step}', 'w') as f:
-                    f.write(json.dumps(shardings, indent=2))
-                # END SHARDING EXPERIMENT
-
-
                 total_batched_samples += 1
                 if rng_to_sync:
                     self._load_rng_state(resume_from_checkpoint)
@@ -1948,6 +1930,63 @@ class Trainer:
                         if not isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                             self.lr_scheduler.step()
 
+                    # BEGIN SHARDING EXPERIMENT
+                    import re, collections, json
+                    if step == 0 and epoch == 0:
+                        sd = {'model': model.state_dict(), 'optim': self.optimizer.state_dict()}
+
+                        with open('/tmp/home/shardings.json', 'r') as f:
+                            shardings = json.loads(f.read())
+
+                        import torch_xla.experimental.xla_sharding as xs
+                        pat = re.compile(r'{devices=\[([0-9,]+)\]([0-9,]+)')
+                        def shard_from_spec(param, spec):
+                            # spec will be {devices=[...]...} if sharded
+                            m = pat.match(spec)
+                            if m:
+                                mesh = eval(f'xs.Mesh([{m.group(2)}], [{m.group(1)}])')
+                                xs.mark_sharding(param, mesh, range(len(param.shape)))
+                            return param
+
+                        def traverse(sd, shardings, path=tuple()):
+                            if isinstance(sd, torch.Tensor):
+                                before = torch_xla._XLAC._get_xla_sharding_spec(sd)
+                                shard_from_spec(sd, shardings)
+                                after = torch_xla._XLAC._get_xla_sharding_spec(sd)
+                                print(f'sharded {path} from "{before}" to "{after}"')
+                            elif type(sd) is dict or isinstance(sd, collections.OrderedDict):
+                                assert type(shardings) is dict, f'not a dict: {shardings}'
+                                for k, v in sd.items():
+                                    traverse(v, shardings[str(k)], path + (k,))
+                            elif type(sd) is str or type(sd) is int:
+                                pass
+                            else:
+                                try:
+                                    for (i, v), shard in zip(enumerate(sd), shardings):
+                                        traverse(v, shard, path + (i,))
+                                except:
+                                    pass
+
+                        traverse(sd, shardings)
+
+
+                    ## Write the results
+                    #def sharding(x):
+                    #    if isinstance(x, torch.Tensor):
+                    #        return torch_xla._XLAC._get_xla_sharding_spec(x)
+                    #    return 'nontensor'
+                    #from torch.utils._pytree import tree_map
+                    #shardings = tree_map(sharding, sd)
+                    #try:
+                    #    os.mkdir('/tmp/home/shardings')
+                    #except:
+                    #    pass
+                    #with open(f'/tmp/home/shardings/sharding_{step}', 'w') as f:
+                    #    f.write(json.dumps(shardings, indent=2))
+                    # END SHARDING EXPERIMENT
+
+
+
                     model.zero_grad()
                     self.state.global_step += 1
                     self.state.epoch = epoch + (step + 1 + steps_skipped) / steps_in_epoch
@@ -1959,6 +1998,11 @@ class Trainer:
 
                 if self.control.should_epoch_stop or self.control.should_training_stop:
                     break
+                
+                #with open(f'/tmp/home/tensors/step_{step}', 'w') as f:
+                #    f.write(torch_xla._XLAC._xla_tensors_report())
+                #import gc
+                #gc.collect()
             if step < 0:
                 logger.warning(
                     "There seems to be not a single sample in your epoch_iterator, stopping training at step"
