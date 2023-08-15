@@ -1816,6 +1816,25 @@ class Trainer:
             for step, inputs in enumerate(epoch_iterator):
                 if step == 0 and epoch == 0:
                     print('input sharding', {k: (v.shape, torch_xla._XLAC._get_xla_sharding_spec(v)) for k, v in inputs.items()})
+
+                # BEGIN SHARDING EXPERIMENT
+                sd = {'model': model.state_dict(), 'optim': self.optimizer.state_dict()}
+                def sharding(x):
+                    if isinstance(x, torch.Tensor):
+                        return torch_xla._XLAC._get_xla_sharding_spec(x)
+                    return 'nontensor'
+                from torch.utils._pytree import tree_map
+                shardings = tree_map(sharding, sd)
+                import json
+                try:
+                    os.mkdir('/tmp/home/shardings')
+                except:
+                    pass
+                with open(f'/tmp/home/shardings/sharding_{step}', 'w') as f:
+                    f.write(json.dumps(shardings, indent=2))
+                # END SHARDING EXPERIMENT
+
+
                 total_batched_samples += 1
                 if rng_to_sync:
                     self._load_rng_state(resume_from_checkpoint)
