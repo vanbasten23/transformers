@@ -1817,10 +1817,12 @@ class Trainer:
 
             # Initialize optimizer state
             for name, param in model.named_parameters():
-                param.grad = torch.autograd.Variable(param.data.new(param.size()).zero_())
-                param.grad.requires_grad_(False)
+                if param.requires_grad:
+                    param.grad = torch.autograd.Variable(param.data.new(param.size()).zero_())
+                    param.grad.requires_grad_(False)
             self.optimizer.step()
             model.zero_grad()
+            xm.mark_step()
 
             for step, inputs in enumerate(epoch_iterator):
                 # if step > 0:
