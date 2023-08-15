@@ -1813,6 +1813,8 @@ class Trainer:
             profile_epoch = int(os.environ.get('PROFILE_EPOCH', -1))
             profile_duration = int(os.environ.get('PROFILE_DURATION_MS', 20000))
             profile_logdir = os.environ.get('PROFILE_LOGDIR', None)
+
+
             for step, inputs in enumerate(epoch_iterator):
                 # if step > 0:
                 #     break
@@ -1963,20 +1965,20 @@ class Trainer:
                             num_devices = xr.global_runtime_device_count()
                             # Try forcing replications of rank 1 tensors.
                             if len(state.shape) == 1:
-                                shape =  (num_devices,)
+                                shape = (num_devices,)
                                 mesh = xs.HybridMesh(ici_mesh_shape=shape)
-                                xs.mark_sharding(state, mesh, (None,))
-                                if self.args.spmd_debug:
-                                    print(torch_xla._XLAC._get_xla_sharding_spec(state))
+                                xs.mark_sharding(state, mesh, (None,), custom_sharding=False)
                             else:
                                 assert len(state.shape) == 0
+                                torch_xla._XLAC._xla_replicate_sharding(state)
 
+                            if self.args.spmd_debug:
+                                print(torch_xla._XLAC._get_xla_sharding_spec(state))
                             optimizer_states.append(state)
 
+                torch_xla._XLAC. _xla_replicate_sharding(tr_loss)
                 outputs = tensors + optimizer_states + [tr_loss]
                 for output in outputs:
-                    if len(state.shape) > 0:
-                        torch_xla._XLAC._xla_custom_sharding(output)
                     if self.args.spmd_debug:
                         print("output:", output.shape, torch_xla._XLAC._get_xla_sharding_spec(output))
                 torch_xla._XLAC._xla_sync_multi(outputs, devices=[], wait=False)

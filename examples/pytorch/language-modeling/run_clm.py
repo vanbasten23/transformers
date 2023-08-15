@@ -569,7 +569,7 @@ def main():
             print('> [FSDP] Sharding tensor', name, param.shape)
             mesh = get_mesh(tuple(mesh_shape))
             if len(param.shape) == 1:
-                # Try forcing replications of rank 1 tensors.
+                # Try forcing replications of rank 1/0 tensors.
                 xs.mark_sharding(param, mesh, (None,))
             else:
                 # else FSDP
