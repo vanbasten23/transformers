@@ -607,7 +607,7 @@ def main():
             # LLaMA doesn't use biases.
             if len(param.shape) == 1:
                 # Try forcing replications of rank 1/0 tensors.
-                xs.mark_sharding(param, mesh, (None,))
+                torch_xla._XLAC._xla_replicate_sharding(param)
             else:
                 if 'embed_tokens' in name:
                     xs.mark_sharding(param, mesh, model_data)

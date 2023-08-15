@@ -1843,7 +1843,6 @@ class Trainer:
                         if len(state.shape) == 1:
                             shape = (num_devices,)
                             mesh = xs.HybridMesh(ici_mesh_shape=shape)
-                            print(torch_xla._XLAC._get_xla_sharding_spec(state))
                             xs.mark_sharding(state, mesh, (None,), custom_sharding=False)
                         else:
                             assert len(state.shape) == 0
@@ -1989,7 +1988,7 @@ class Trainer:
 
                 # Let's only materialize the weights, optimzier's moving averages for the grad, loss
                 # such that we shard both the input and output and avoid recompilation.
-                tensors = [param for _, param in model.named_parameters()]
+                tensors = [(name, param) for name, param in model.named_parameters()]
                 optimizer_states = []
                 # Shard the optimizer, most optimizers are inited after optimizer.step()
                 for _, raw_state in self.optimizer.optimizer.state.items():
@@ -2015,14 +2014,17 @@ class Trainer:
 
                             if self.args.spmd_debug:
                                 print(torch_xla._XLAC._get_xla_sharding_spec(state))
-                            optimizer_states.append(state)
+                            optimizer_states.append((name, state))
 
                 torch_xla._XLAC. _xla_replicate_sharding(tr_loss)
-                outputs = tensors + optimizer_states + [tr_loss]
-                for output in outputs:
+                outputs = tensors + optimizer_states + [("tr_loss", tr_loss)]
+                for name, output in outputs:
+                    if torch_xla._XLAC._get_xla_sharding_spec(output) == "":
+                        assert len(output.shape) == 1
+                        torch_xla._XLAC._xla_replicate_sharding(output)
                     if self.args.spmd_debug:
-                        print("output:", output.shape, torch_xla._XLAC._get_xla_sharding_spec(output))
-                torch_xla._XLAC._xla_sync_multi(outputs, devices=[], wait=False)
+                        print("output:", name, output.shape, torch_xla._XLAC._get_xla_sharding_spec(output))
+                torch_xla._XLAC._xla_sync_multi([output for _, output in outputs], devices=[], wait=False)
                 torch_xla._XLAC._clear_pending_irs(str(xm.xla_device()))
 
             if step < 0:
