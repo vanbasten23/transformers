@@ -333,6 +333,12 @@ class LlamaAttention(nn.Module):
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
+        # query_states Batch Num_head Seq Head_dim
+        # key_states   Batch Num_head Kv_seq Head_dim
+        #attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
+        assert query_states.shape == torch.Size((bsz, self.num_heads, q_len, self.head_dim)), f'incorrect query_states shape: {query_states.shape}'
+        assert key_states.shape == torch.Size((bsz, self.num_heads, q_len, self.head_dim)), f'incorrect key_states_states shape: {key_states.shape}'
+        attn_weights = torch.einsum('bnsh,bnkh->bnsk', query_states, key_states) / math.sqrt(self.head_dim)
 
         if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
             raise ValueError(
@@ -349,7 +355,12 @@ class LlamaAttention(nn.Module):
 
         # upcast attention to fp32
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-        attn_output = torch.matmul(attn_weights, value_states)
+        # attn_weights Batch Num_head Seq Kv_seq
+        # value_states Batch Num_head Seq Head_dim
+        # attn_output = torch.matmul(attn_weights, value_states)
+        assert attn_weights.shape == torch.Size((bsz, self.num_heads, q_len, kv_seq_len)), f'incorrect atten_weight shape: {attn_weights.shape}'
+        assert value_states.shape == torch.Size((bsz, self.num_heads, kv_seq_len, self.head_dim)), f'incorrect value_states shape: {value_states.shape}'
+        attn_output = torch.einsum('bnsk,bnkh->bnsh', attn_weights, value_states)
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
             raise ValueError(
