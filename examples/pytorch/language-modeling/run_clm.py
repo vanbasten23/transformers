@@ -545,8 +545,8 @@ def main():
         return xs.HybridMesh(ici_mesh_shape=ici_mesh_shape, dcn_mesh_shape=dcn_mesh_shape)
 
     # Replace the linear layer
-    # from torch_xla.distributed.fsdp.utils import apply_xla_patch_to_nn_linear
-    # model = apply_xla_patch_to_nn_linear(model)
+    from torch_xla.distributed.fsdp.utils import apply_xla_patch_to_nn_linear
+    model = apply_xla_patch_to_nn_linear(model)
 
     @torch.no_grad()
     def _backward_hook(param_name: str, param: torch.nn.Parameter, grad: torch.Tensor) -> None:
