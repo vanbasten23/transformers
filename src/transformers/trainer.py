@@ -1782,6 +1782,52 @@ class Trainer:
                 for _ in train_dataloader:
                     break
 
+        import re, torch_xla.experimental.xla_sharding as xs
+        pat = re.compile(r'{devices=\[([0-9,]+)\]([0-9,]+)')
+        def shard_from_spec(param, spec):
+            # spec will be {devices=[...]...} if sharded
+            m = pat.match(spec)
+            if m:
+                mesh = eval(f'xs.Mesh([{m.group(2)}], [{m.group(1)}])')
+                xs.mark_sharding(param, mesh, range(len(param.shape)))
+            elif 'replicated' in spec:
+                import torch_xla.runtime as xr
+                num_devices = xr.global_runtime_device_count()
+                mesh = xs.Mesh(torch.arange(num_devices), (num_devices,))
+                xs.mark_sharding(param, mesh, (None,))
+            else:
+                print('unknown spec:', spec)
+            return param
+
+        # Initialize optimizer state
+        for name, param in model.named_parameters():
+            if not torch_xla._XLAC._get_xla_sharding_spec(param):
+                print('UNSHARDED PARAMETER', name)
+            if param.requires_grad:
+                param.grad = torch.autograd.Variable(torch.zeros_like(param))
+                param.grad.requires_grad_(False)
+                param_sharding = torch_xla._XLAC._get_xla_sharding_spec(param)
+                shard_from_spec(param.grad, param_sharding)
+                print('sharded grad for', name, 'to', torch_xla._XLAC._get_xla_sharding_spec(param.grad), ', expected', param_sharding, f'(requires_grad={param.requires_grad}')
+        self.optimizer.step()
+        model.zero_grad()
+
+        # Mark replicated sharding on all optimizer state
+        named_parameters = list(model.named_parameters())
+        import torch_xla.runtime as xr
+        num_devices = xr.global_runtime_device_count()
+        mesh = xs.Mesh(torch.arange(num_devices), (num_devices,))
+        for i, state in self.optimizer.state_dict()['state'].items():
+            name, param = named_parameters[i]
+            # spec = torch_xla._XLAC._get_xla_sharding_spec(param)
+            for n, s in state.items():
+                if isinstance(s, torch.Tensor) and len(s.shape) > 0:
+                    xs.mark_sharding(s, mesh, (None,))
+                    print(f'sharded optim {name}.{n} to', torch_xla._XLAC._get_xla_sharding_spec(s))
+                else:
+                    print(f'could not mark_sharding on {n}: {type(n)}')
+        xm.mark_step()
+
         total_batched_samples = 0
         for epoch in range(epochs_trained, num_train_epochs):
             epoch_iterator = train_dataloader
@@ -1928,6 +1974,12 @@ class Trainer:
                         # Delay optimizer scheduling until metrics are generated
                         if not isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                             self.lr_scheduler.step()
+
+                    # Re-apply sharding to ensure it is retained
+                    for i, state in self.optimizer.state_dict()['state'].items():
+                        for n, s in state.items():
+                            if isinstance(s, torch.Tensor) and len(s.shape) > 0:
+                                xs.mark_sharding(s, mesh, (None,))
 
                     model.zero_grad()
                     self.state.global_step += 1

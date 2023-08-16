@@ -554,7 +554,7 @@ def main():
             # TODO(jonbolin): Can't load_state_dict when the module consists of meta tensors
             path = re.sub(r'.(\d+)', r'[\1]', name)
             assign = f'model.{path} = torch.nn.Parameter(param)'
-            # print(f'running "{assign}"')
+            print(f'running "{assign}"')
             exec(assign)
 
         # Mark sharding based on the model_args
@@ -600,6 +600,7 @@ def main():
             # We don't care about layernorm's weights, and
             # LLaMA doesn't use biases.
             if len(param.shape) == 1:
+                xs.mark_sharding(param, mesh, (None,))
                 continue
 
             if 'embed_tokens' in name:
