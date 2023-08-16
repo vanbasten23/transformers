@@ -1857,6 +1857,13 @@ class Trainer:
                 # if step > 0:
                 #     break
 
+                for name, param in model.named_parameters():
+                    if torch_xla._XLAC._get_xla_sharding_spec(param) == "":
+                        assert len(param.shape) == 1
+                        torch_xla._XLAC._xla_replicate_sharding(param)
+                        if self.args.spmd_debug:
+                            print("Resharded replicated", name)
+
                 if step == 0 and epoch == 0:
                     print('input sharding', {k: (v.shape, torch_xla._XLAC._get_xla_sharding_spec(v)) for k, v in inputs.items()})
                 total_batched_samples += 1
@@ -2018,9 +2025,6 @@ class Trainer:
                 torch_xla._XLAC. _xla_replicate_sharding(tr_loss)
                 outputs = tensors + optimizer_states + [("tr_loss", tr_loss)]
                 for name, output in outputs:
-                    if torch_xla._XLAC._get_xla_sharding_spec(output) == "":
-                        assert len(output.shape) == 1
-                        torch_xla._XLAC._xla_replicate_sharding(output)
                     if self.args.spmd_debug:
                         print("output:", name, output.shape, torch_xla._XLAC._get_xla_sharding_spec(output))
                 torch_xla._XLAC._xla_sync_multi([output for _, output in outputs], devices=[], wait=False)

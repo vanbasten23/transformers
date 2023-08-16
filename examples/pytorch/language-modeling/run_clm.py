@@ -548,9 +548,16 @@ def main():
     # from torch_xla.distributed.fsdp.utils import apply_xla_patch_to_nn_linear
     # model = apply_xla_patch_to_nn_linear(model)
 
+    @torch.no_grad()
+    def _backward_hook(param_name: str, param: torch.nn.Parameter, grad: torch.Tensor) -> None:
+        torch_xla._XLAC._xla_copy_sharding_spec(grad, param)
+        print("Grad", param_name, torch_xla._XLAC._get_xla_sharding_spec(grad))
+        return grad
+
     # Convert the model from meta to XLA tensors one layer at a time to avoid
     # host-side OOM
-    for name, param in model.state_dict().items():
+    # for name, param in model.state_dict().items():
+    for name, param in model.named_parameters():
         if model_args.spmd_defer_init:
             # Create an tensor based on the meta tensor
             param = torch.empty_like(param, device='cpu')
@@ -624,6 +631,10 @@ def main():
 
         import torch_xla
         print(torch_xla._XLAC._get_xla_sharding_spec(param))
+
+        import functools
+        param.register_hook(
+            functools.partial(_backward_hook, name, param))
 
     # Move anything remaining to the xla device
     model = model.to(xm.xla_device())
