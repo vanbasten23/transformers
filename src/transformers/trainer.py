@@ -1782,6 +1782,45 @@ class Trainer:
                 for _ in train_dataloader:
                     break
 
+        # Initialize optimizer state
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                param.grad = torch.autograd.Variable(param.data.new(param.size()).zero_())
+                param.grad.requires_grad_(False)
+        self.optimizer.step()
+        model.zero_grad()
+
+        # Let's only materialize the weights, optimzier's moving averages for the grad, loss
+        # such that we shard both the input and output and avoid recompilation.
+        tensors = [param for _, param in model.named_parameters()]
+        optimizer_states = []
+        # Shard the optimizer, most optimizers are inited after optimizer.step()
+        for _, raw_state in self.optimizer.optimizer.state.items():
+            for name, state in raw_state.items():
+                if isinstance(state, torch.Tensor):
+                    # TODO: we should have a way to copy the sharding spec from one tensor to another tensor.
+                    # And then maybe we can somehow copy the the sharding spec from param.
+                    if self.args.spmd_debug:
+                        print(name, state.shape)
+
+                    import torch_xla.experimental.xla_sharding as xs
+                    import torch_xla.runtime as xr
+                    num_devices = xr.global_runtime_device_count()
+                    # Try forcing replications of rank 1 tensors.
+                    if len(state.shape) == 1:
+                        shape = (num_devices,)
+                        mesh = xs.HybridMesh(ici_mesh_shape=shape)
+                        xs.mark_sharding(state, mesh, (None,), custom_sharding=False)
+                    else:
+                        assert len(state.shape) == 0
+                        torch_xla._XLAC._xla_replicate_sharding(state)
+
+                    if self.args.spmd_debug:
+                        print(torch_xla._XLAC._get_xla_sharding_spec(state))
+                    optimizer_states.append(state)
+
+        xm.mark_step()
+
         total_batched_samples = 0
         for epoch in range(epochs_trained, num_train_epochs):
             epoch_iterator = train_dataloader
@@ -1813,46 +1852,6 @@ class Trainer:
             profile_epoch = int(os.environ.get('PROFILE_EPOCH', -1))
             profile_duration = int(os.environ.get('PROFILE_DURATION_MS', 20000))
             profile_logdir = os.environ.get('PROFILE_LOGDIR', None)
-
-
-            # Initialize optimizer state
-            for name, param in model.named_parameters():
-                if param.requires_grad:
-                    param.grad = torch.autograd.Variable(param.data.new(param.size()).zero_())
-                    param.grad.requires_grad_(False)
-            self.optimizer.step()
-            model.zero_grad()
-
-            # Let's only materialize the weights, optimzier's moving averages for the grad, loss
-            # such that we shard both the input and output and avoid recompilation.
-            tensors = [param for _, param in model.named_parameters()]
-            optimizer_states = []
-            # Shard the optimizer, most optimizers are inited after optimizer.step()
-            for _, raw_state in self.optimizer.optimizer.state.items():
-                for name, state in raw_state.items():
-                    if isinstance(state, torch.Tensor):
-                        # TODO: we should have a way to copy the sharding spec from one tensor to another tensor.
-                        # And then maybe we can somehow copy the the sharding spec from param.
-                        if self.args.spmd_debug:
-                            print(name, state.shape)
-
-                        import torch_xla.experimental.xla_sharding as xs
-                        import torch_xla.runtime as xr
-                        num_devices = xr.global_runtime_device_count()
-                        # Try forcing replications of rank 1 tensors.
-                        if len(state.shape) == 1:
-                            shape = (num_devices,)
-                            mesh = xs.HybridMesh(ici_mesh_shape=shape)
-                            xs.mark_sharding(state, mesh, (None,), custom_sharding=False)
-                        else:
-                            assert len(state.shape) == 0
-                            torch_xla._XLAC._xla_replicate_sharding(state)
-
-                        if self.args.spmd_debug:
-                            print(torch_xla._XLAC._get_xla_sharding_spec(state))
-                        optimizer_states.append(state)
-
-            xm.mark_step()
 
             for step, inputs in enumerate(epoch_iterator):
                 # if step > 0:
