@@ -417,7 +417,7 @@ class LlamaAttention(nn.Module):
         # key_states   Batch Num_head Kv_seq Head_dim
         #attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
         assert query_states.shape == torch.Size((bsz, self.num_heads, q_len, self.head_dim)), f'incorrect query_states shape: {query_states.shape}'
-        assert key_states.shape == torch.Size((bsz, self.num_heads, q_len, self.head_dim)), f'incorrect key_states_states shape: {key_states.shape}'
+        assert key_states.shape == torch.Size((bsz, self.num_heads, kv_seq_len, self.head_dim)), f'incorrect key_states_states shape: {key_states.shape}'
         attn_weights = torch.einsum('bnsh,bnkh->bnsk', query_states, key_states) / math.sqrt(self.head_dim)
         # Apply 2D sharding:
         # attn_weights (batch, num_attention_heads, length, length)
