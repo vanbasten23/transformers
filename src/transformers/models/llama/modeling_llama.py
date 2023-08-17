@@ -436,14 +436,15 @@ class LlamaAttention(nn.Module):
         xs.mark_sharding(attn_weights, attn_mesh, range(len(attn_weights.shape)))
         if attn_weights.requires_grad:
             @torch.no_grad()
-            def _backward_hook(param_name: str, param: torch.nn.Parameter, grad: torch.Tensor) -> None:
+            def _backward_hook(spmd_debug: bool, param_name: str, param: torch.nn.Parameter, grad: torch.Tensor) -> None:
                 torch_xla._XLAC._xla_copy_sharding_spec(grad, param)
-                print("Grad", param_name, torch_xla._XLAC._get_xla_sharding_spec(grad))
+                if spmd_debug:
+                    print("Grad", param_name, torch_xla._XLAC._get_xla_sharding_spec(grad))
                 return grad
 
             import functools
             attn_weights.register_hook(
-                functools.partial(_backward_hook, "attn_weights", attn_weights))
+                functools.partial(_backward_hook, self.spmd_debug, "attn_weights", attn_weights))
 
         if self.spmd_debug:
             print(torch_xla._XLAC._get_xla_sharding_spec(attn_weights))

@@ -549,9 +549,10 @@ def main():
     model = apply_xla_patch_to_nn_linear(model)
 
     @torch.no_grad()
-    def _backward_hook(param_name: str, param: torch.nn.Parameter, grad: torch.Tensor) -> None:
+    def _backward_hook(spmd_debug: bool, param_name: str, param: torch.nn.Parameter, grad: torch.Tensor) -> None:
         torch_xla._XLAC._xla_copy_sharding_spec(grad, param)
-        print("Grad", param_name, torch_xla._XLAC._get_xla_sharding_spec(grad))
+        if spmd_debug:
+            print("Grad", param_name, torch_xla._XLAC._get_xla_sharding_spec(grad))
         return grad
 
     # Convert the model from meta to XLA tensors one layer at a time to avoid
@@ -634,7 +635,7 @@ def main():
 
         import functools
         param.register_hook(
-            functools.partial(_backward_hook, name, param))
+            functools.partial(_backward_hook, model_args.spmd_debug, name, param))
 
     # Move anything remaining to the xla device
     model = model.to(xm.xla_device())
