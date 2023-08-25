@@ -546,14 +546,14 @@ def main():
 
     # Replace the linear layer
     from torch_xla.distributed.fsdp.utils import apply_xla_patch_to_nn_linear
-    model = apply_xla_patch_to_nn_linear(model)
+    model = apply_xla_patch_to_nn_linear(model, xs.xla_patched_nn_linear_forward)
 
-    @torch.no_grad()
-    def _backward_hook(spmd_debug: bool, param_name: str, param: torch.nn.Parameter, grad: torch.Tensor) -> None:
-        torch_xla._XLAC._xla_copy_sharding_spec(grad, param)
-        if spmd_debug:
-            print("Grad", param_name, torch_xla._XLAC._get_xla_sharding_spec(grad))
-        return grad
+    # @torch.no_grad()
+    # def _backward_hook(spmd_debug: bool, param_name: str, param: torch.nn.Parameter, grad: torch.Tensor) -> None:
+    #     torch_xla._XLAC._xla_copy_sharding_spec(grad, param)
+    #     if spmd_debug:
+    #         print("Grad", param_name, torch_xla._XLAC._get_xla_sharding_spec(grad))
+    #     return grad
 
     # Convert the model from meta to XLA tensors one layer at a time to avoid
     # host-side OOM
@@ -633,9 +633,9 @@ def main():
         import torch_xla
         print(torch_xla._XLAC._get_xla_sharding_spec(param))
 
-        import functools
-        param.register_hook(
-            functools.partial(_backward_hook, model_args.spmd_debug, name, param))
+        # import functools
+        # param.register_hook(
+        #     functools.partial(_backward_hook, model_args.spmd_debug, name, param))
 
     # Move anything remaining to the xla device
     model = model.to(xm.xla_device())

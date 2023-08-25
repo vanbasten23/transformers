@@ -1810,10 +1810,11 @@ class Trainer:
                     if len(state.shape) == 1:
                         shape = (num_devices,)
                         mesh = xs.HybridMesh(ici_mesh_shape=shape)
-                        xs.mark_sharding(state, mesh, (None,), custom_sharding=False)
-                    else:
-                        assert len(state.shape) == 0
-                        torch_xla._XLAC._xla_replicate_sharding(state)
+                        # xs.mark_sharding(state, mesh, (None,), custom_sharding=False)
+                        xs.mark_sharding(state, mesh, (None,))
+                    # else:
+                    #     assert len(state.shape) == 0
+                    #     torch_xla._XLAC._xla_replicate_sharding(state)
 
                     if self.args.spmd_debug:
                         print(torch_xla._XLAC._get_xla_sharding_spec(state))
@@ -1854,13 +1855,16 @@ class Trainer:
             profile_logdir = os.environ.get('PROFILE_LOGDIR', None)
 
             for step, inputs in enumerate(epoch_iterator):
-                # if step > 0:
+                # if step > 2:
                 #     break
 
                 for name, param in model.named_parameters():
                     if torch_xla._XLAC._get_xla_sharding_spec(param) == "":
                         assert len(param.shape) == 1
-                        torch_xla._XLAC._xla_replicate_sharding(param)
+                        # torch_xla._XLAC._xla_replicate_sharding(param)
+                        # shape = (num_devices,)
+                        # mesh = xs.HybridMesh(ici_mesh_shape=shape)
+                        # xs.mark_sharding(param, mesh, (None,))
                         if self.args.spmd_debug:
                             print("Resharded replicated", name)
 
@@ -2013,16 +2017,17 @@ class Trainer:
                                 shape = (num_devices,)
                                 mesh = xs.HybridMesh(ici_mesh_shape=shape)
                                 # print(torch_xla._XLAC._get_xla_sharding_spec(state))
-                                xs.mark_sharding(state, mesh, (None,), custom_sharding=False)
+                                # xs.mark_sharding(state, mesh, (None,), custom_sharding=False)
+                                xs.mark_sharding(state, mesh, (None,))
                             else:
                                 assert len(state.shape) == 0
-                                torch_xla._XLAC._xla_replicate_sharding(state)
+                                # torch_xla._XLAC._xla_replicate_sharding(state)
 
                             if self.args.spmd_debug:
                                 print(torch_xla._XLAC._get_xla_sharding_spec(state))
                             optimizer_states.append((name, state))
 
-                torch_xla._XLAC. _xla_replicate_sharding(tr_loss)
+                # torch_xla._XLAC. _xla_replicate_sharding(tr_loss)
                 outputs = tensors + optimizer_states + [("tr_loss", tr_loss)]
                 for name, output in outputs:
                     if self.args.spmd_debug:
