@@ -576,10 +576,10 @@ def main():
             mesh_shape = (num_devices,) + (1,) * (len(param.shape) - 1)
             print('> [FSDP] Sharding tensor', name, param.shape)
             mesh = get_mesh(tuple(mesh_shape))
-            if len(param.shape) == 1:
-                # Try forcing replications of rank 1/0 tensors.
-                xs.mark_sharding(param, mesh, (None,))
-            else:
+            # if len(param.shape) == 1:
+            #     # Try forcing replications of rank 1/0 tensors.
+            #     xs.mark_sharding(param, mesh, (None,))
+            if len(param.shape) == 2:
                 # else FSDP
                 assert len(param.shape) == 2
                 xs.mark_sharding(param, mesh, range(len(param.shape)))
