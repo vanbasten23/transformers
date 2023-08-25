@@ -613,22 +613,22 @@ def main():
 
             # We don't care about layernorm's weights, and
             # LLaMA doesn't use biases.
-            if len(param.shape) == 1:
-                # Try forcing replications of rank 1/0 tensors.
-                torch_xla._XLAC._xla_replicate_sharding(param)
-            else:
-                if 'embed_tokens' in name:
-                    xs.mark_sharding(param, mesh, model_data)
-                elif 'q_proj' in name or 'k_proj' in name or 'v_proj' in name:
-                    xs.mark_sharding(param, mesh, data_model)
-                elif 'o_proj' in name:
-                    xs.mark_sharding(param, mesh, model_data)
-                elif 'gate_proj' in name or 'up_proj' in name:
-                    xs.mark_sharding(param, mesh, model_data)
-                elif 'down_proj' in name:
-                    xs.mark_sharding(param, mesh, data_model)
-                elif 'lm_head' in name:  # Not sure what this is but has the same shape as embed_tokens
-                    xs.mark_sharding(param, mesh, model_data)
+            # if len(param.shape) == 1:
+            #     # Try forcing replications of rank 1/0 tensors.
+            #     torch_xla._XLAC._xla_replicate_sharding(param)
+            # else:
+            if 'embed_tokens' in name:
+                xs.mark_sharding(param, mesh, model_data)
+            elif 'q_proj' in name or 'k_proj' in name or 'v_proj' in name:
+                xs.mark_sharding(param, mesh, data_model)
+            elif 'o_proj' in name:
+                xs.mark_sharding(param, mesh, model_data)
+            elif 'gate_proj' in name or 'up_proj' in name:
+                xs.mark_sharding(param, mesh, model_data)
+            elif 'down_proj' in name:
+                xs.mark_sharding(param, mesh, data_model)
+            elif 'lm_head' in name:  # Not sure what this is but has the same shape as embed_tokens
+                xs.mark_sharding(param, mesh, model_data)
 
         import torch_xla
         print(torch_xla._XLAC._get_xla_sharding_spec(param))
