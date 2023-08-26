@@ -2028,12 +2028,12 @@ class Trainer:
                             optimizer_states.append((name, state))
 
                 # torch_xla._XLAC. _xla_replicate_sharding(tr_loss)
-                outputs = tensors + optimizer_states + [("tr_loss", tr_loss)]
-                for name, output in outputs:
-                    if self.args.spmd_debug:
-                        print("output:", name, output.shape, torch_xla._XLAC._get_xla_sharding_spec(output))
-                torch_xla._XLAC._xla_sync_multi([output for _, output in outputs], devices=[], wait=False)
-                torch_xla._XLAC._clear_pending_irs(str(xm.xla_device()))
+                # outputs = tensors + optimizer_states + [("tr_loss", tr_loss)]
+                # for name, output in outputs:
+                #     if self.args.spmd_debug:
+                #         print("output:", name, output.shape, torch_xla._XLAC._get_xla_sharding_spec(output))
+                # torch_xla._XLAC._xla_sync_multi([output for _, output in outputs], devices=[], wait=False)
+                # torch_xla._XLAC._clear_pending_irs(str(xm.xla_device()))
 
             if step < 0:
                 logger.warning(
