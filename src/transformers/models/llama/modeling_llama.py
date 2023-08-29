@@ -34,9 +34,7 @@ from ...utils import add_start_docstrings, add_start_docstrings_to_model_forward
 from .configuration_llama import LlamaConfig
 
 import torch_xla.debug.profiler as xp
-import torch_xla.core.xla_model as xm
 import torch_xla.experimental.xla_sharding as xs
-import torch_xla.runtime as xr
 import torch_xla
 
 logger = logging.get_logger(__name__)
@@ -184,7 +182,6 @@ def rotate_half(x):
     return torch.cat((-x2, x1), dim=-1)
 
 
-@xp.trace_me("rotary_emb")
 def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
     # The first two dimensions of cos and sin are always 1, so we can `squeeze` them.
     cos = cos.squeeze(1).squeeze(0)  # [seq_len, dim]
@@ -209,21 +206,10 @@ class LlamaMLP(nn.Module):
 
         self.hidden_size = config.hidden_size
         self.intermediate_size = config.intermediate_size
-        self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False).to('xla')
-        self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False).to('xla')
-        self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False).to('xla')
+        self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
+        self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
+        self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
         self.act_fn = ACT2FN[config.hidden_act]
-
-        if self.spmd_fsdp_sharding:
-            gate_proj_spec = up_proj_spec = down_proj_spec = ('data', None)
-        else:
-            # 2D sharding
-            gate_proj_spec = up_proj_spec = ('model', 'data')
-            down_proj_spec = ('data', 'model')
-        xs.mark_sharding(self.gate_proj.weight, self.spmd_mesh, gate_proj_spec)
-        xs.mark_sharding(self.up_proj.weight, self.spmd_mesh, up_proj_spec)
-        xs.mark_sharding(self.down_proj.weight, self.spmd_mesh, down_proj_spec)
-
 
     @xp.trace_me("LlamaMLP")
     def forward(self, x):
@@ -310,23 +296,11 @@ class LlamaAttention(nn.Module):
                 f"hidden_size must be divisible by num_heads (got `hidden_size`: {self.hidden_size}"
                 f" and `num_heads`: {self.num_heads})."
             )
-        self.q_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=False).to('xla')
-        self.k_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False).to('xla')
-        self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False).to('xla')
-        self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False).to('xla')
+        self.q_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=False)
+        self.k_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
+        self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
+        self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False)
         self._init_rope()
-
-        if self.spmd_fsdp_sharding:
-            qkv_spec = o_spec = ('data', None)
-        else:
-            # 2D sharding
-            qkv_spec = ('data', 'model')
-            o_spec = ('model', 'data')
-
-        xs.mark_sharding(self.q_proj.weight, self.spmd_mesh, qkv_spec)
-        xs.mark_sharding(self.k_proj.weight, self.spmd_mesh, qkv_spec)
-        xs.mark_sharding(self.v_proj.weight, self.spmd_mesh, qkv_spec)
-        xs.mark_sharding(self.o_proj.weight, self.spmd_mesh, o_spec)
 
     def _init_rope(self):
         if self.config.rope_scaling is None:
@@ -682,14 +656,7 @@ class LlamaModel(LlamaPreTrainedModel):
 
         init_spmd(self, config)
 
-        self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx).to('xla')
-        # embed_tokens.weight: Vocab x Model
-        if self.spmd_fsdp_sharding:
-            partition_spec = ('data', None)
-        else:
-            # 2D sharding
-            partition_spec = ('model', 'data')
-        xs.mark_sharding(self.embed_tokens.weight, self.spmd_mesh, partition_spec)
+        self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
         self.layers = nn.ModuleList([LlamaDecoderLayer(config) for _ in range(config.num_hidden_layers)])
         self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
@@ -786,7 +753,6 @@ class LlamaModel(LlamaPreTrainedModel):
             attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
         )
 
-        # Is this the input to the model?
         hidden_states = inputs_embeds
         # Apply 2D sharding:
         # hidden_states (batch, length, hidden)
@@ -875,12 +841,7 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
 
         self.model = LlamaModel(config)
         self.vocab_size = config.vocab_size
-        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False).to('xla')
-        if config.spmd_fsdp_sharding:
-            partition_spec = ('data', None)
-        else:
-            partition_spec = ('model', 'data')
-        xs.mark_sharding(self.lm_head.weight, self.spmd_mesh, partition_spec)
+        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
         # Initialize weights and apply final processing
         self.post_init()
