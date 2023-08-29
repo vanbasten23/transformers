@@ -369,6 +369,7 @@ class LlamaMLP(nn.Module):
         if self.spmd_fsdp_sharding:
             gate_proj_spec = up_proj_spec = down_proj_spec = ('data', None)
         else:
+            # 2D sharding
             gate_proj_spec = up_proj_spec = ('model', 'data')
             down_proj_spec = ('data', 'model')
         xs.mark_sharding(self.gate_proj.weight, self.spmd_mesh, gate_proj_spec)
@@ -472,6 +473,7 @@ class LlamaAttention(nn.Module):
         if self.spmd_fsdp_sharding:
             qkv_spec = o_spec = ('data', None)
         else:
+            # 2D sharding
             qkv_spec = ('data', 'model')
             o_spec = ('model', 'data')
 
@@ -1063,6 +1065,7 @@ class LlamaModel(LlamaPreTrainedModel):
         if self.spmd_fsdp_sharding:
             partition_spec = ('data', None)
         else:
+            # 2D sharding
             partition_spec = ('model', 'data')
         xs.mark_sharding(self.embed_tokens.weight, self.spmd_mesh, partition_spec)
 
