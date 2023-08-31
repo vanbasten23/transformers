@@ -154,7 +154,7 @@ class OptimizerNames(ExplicitEnum):
     PAGED_LION_8BIT = "paged_lion_8bit"
 
 
-@dataclass
+@dataclass(frozen=False)
 class TrainingArguments:
     """
     TrainingArguments is the subset of the arguments we use in our example scripts **which relate to the training loop

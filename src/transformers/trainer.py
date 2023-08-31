@@ -330,6 +330,13 @@ class Trainer:
             logger.info(f"No `TrainingArguments` passed, using `output_dir={output_dir}`.")
             args = TrainingArguments(output_dir=output_dir)
         self.args = args
+
+        self.args.spmd_batch_sharding = True
+        self.args.spmd_fsdp_sharding = True
+        self.args.spmd_tensor_sharding = False
+        self.args.spmd_2d_sharding = False
+        self.args.spmd_iota_mesh = True
+
         # Seed must be set before instantiating the model when using model
         enable_full_determinism(self.args.seed) if self.args.full_determinism else set_seed(self.args.seed)
         self.hp_name = None
@@ -1466,6 +1473,7 @@ class Trainer:
               else:
                 return xs.HybridMesh(ici_mesh_shape=ici_mesh_shape, dcn_mesh_shape=dcn_mesh_shape)
 
+
             sharding_spec = None
             if self.args.spmd_batch_sharding:
                 mesh = get_mesh((num_devices, 1))
@@ -1815,7 +1823,7 @@ class Trainer:
             profile_logdir = os.environ.get('PROFILE_LOGDIR', None)
             for step, inputs in enumerate(epoch_iterator):
                 if step == 0 and epoch == 0:
-                    print('input sharding', {k: (v.shape, torch_xla._XLAC._get_xla_sharding_spec(v)) for k, v in inputs.items()})
+                    logger.info('  input sharding', {k: (v.shape, torch_xla._XLAC._get_xla_sharding_spec(v)) for k, v in inputs.items()})
                 total_batched_samples += 1
                 if rng_to_sync:
                     self._load_rng_state(resume_from_checkpoint)
