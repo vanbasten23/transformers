@@ -306,6 +306,7 @@ def main():
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
+    # TODO(yeounoh) currently hard-coded inside trainer, re-enable
     # training_args.spmd_batch_sharding = model_args.spmd_batch_sharding or model_args.spmd_fsdp_sharding
     # training_args.spmd_fsdp_sharding = model_args.spmd_fsdp_sharding
     # training_args.spmd_tensor_sharding = model_args.spmd_tensor_sharding
