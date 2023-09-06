@@ -306,12 +306,12 @@ def main():
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
-    # TODO(yeounoh) currently hard-coded inside trainer, re-enable
-    # training_args.spmd_batch_sharding = model_args.spmd_batch_sharding or model_args.spmd_fsdp_sharding
-    # training_args.spmd_fsdp_sharding = model_args.spmd_fsdp_sharding
-    # training_args.spmd_tensor_sharding = model_args.spmd_tensor_sharding
-    # training_args.spmd_2d_sharding = model_args.spmd_2d_sharding
-    # training_args.spmd_iota_mesh = model_args.spmd_iota_mesh
+    # TODO(yeounoh) had some frozen data issue, which was resolved by datasets==2.14.4
+    training_args.spmd_batch_sharding = model_args.spmd_batch_sharding or model_args.spmd_fsdp_sharding
+    training_args.spmd_fsdp_sharding = model_args.spmd_fsdp_sharding
+    training_args.spmd_tensor_sharding = model_args.spmd_tensor_sharding
+    training_args.spmd_2d_sharding = model_args.spmd_2d_sharding
+    training_args.spmd_iota_mesh = model_args.spmd_iota_mesh
 
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
