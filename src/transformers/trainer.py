@@ -1417,13 +1417,41 @@ class Trainer:
         return model
 
     def _xla_sharded_dataloader(self, dataloader):
-        if is_torch_tpu_available():
-            import torch_xla.experimental.xla_sharding as xs
-            import torch_xla.distributed.parallel_loader as pl
-            sharding_spec = xs.ShardingSpec(self.args.spmd_mesh, (('dcn', 'data'), None))
-            return pl.MpDeviceLoader(dataloader, self.args.device, input_sharding=sharding_spec, loader_prefetch_size=self.args.train_batch_size, device_prefetch_size=4)
-        else:
-            return dataloader
+        # TODO(jonbolin): Use a dataloader which:
+        #  1. Creates fake data
+        #  2. Returns the same sample for all steps.
+        class FakeDataLoader:
+            def __init__(self, trainer):
+                import torch_xla, torch_xla.runtime as xr, torch_xla.experimental.xla_sharding as xs
+                self.len = 20 # 20 steps per epoch
+                self.amt = 0
+                per_device_batch_size = trainer.args.per_device_train_batch_size // (trainer.args.spmd_mesh.size() // trainer.args.spmd_mesh.shape()['model'])
+                cpu_shard = torch.zeros(per_device_batch_size, trainer.args.block_size, dtype=torch.long)
+                op_sharding = trainer.args.spmd_mesh.get_op_sharding((('dcn', 'data'), None))
+                print('tensor shape before assembling:', cpu_shard.shape, xr.addressable_device_count())
+                self.tensor = torch_xla._XLAC._global_tensor_from_cpu_shards([cpu_shard] * len(torch_xla._XLAC._xla_get_runtime_devices()), op_sharding)
+                print('tensor shape after assembling:', self.tensor.shape)
+            def __len__(self):
+                return self.len
+            def __iter__(self):
+                self.amt = 0
+                return self
+            def __next__(self):
+                xm.mark_step()
+                if self.amt == self.len:
+                    raise StopIteration()
+                self.amt += 1
+                return {'input_ids': self.tensor, 'attention_mask': self.tensor, 'labels': self.tensor}
+                
+
+        return FakeDataLoader(self)
+        #if is_torch_tpu_available():
+        #    import torch_xla.experimental.xla_sharding as xs
+        #    import torch_xla.distributed.parallel_loader as pl
+        #    sharding_spec = xs.ShardingSpec(self.args.spmd_mesh, (('dcn', 'data'), None))
+        #    return pl.MpDeviceLoader(dataloader, self.args.device, input_sharding=sharding_spec, loader_prefetch_size=self.args.train_batch_size, device_prefetch_size=4)
+        #else:
+        #    return dataloader
 
     def train(
         self,
@@ -1772,6 +1800,7 @@ class Trainer:
                     _ = list(sampler)
 
         total_batched_samples = 0
+        import torch_xla.core.xla_model as xm
         for epoch in range(epochs_trained, num_train_epochs):
             epoch_iterator = train_dataloader
             if hasattr(epoch_iterator, "set_epoch"):
@@ -1807,6 +1836,9 @@ class Trainer:
             for step, inputs in enumerate(epoch_iterator):
                 if step == 0 and epoch == 0:
                     print('input sharding', {k: (v.shape, torch_xla._XLAC._get_xla_sharding_spec(v)) for k, v in inputs.items()})
+                from datetime import datetime
+                start = datetime.now()
+                print(f'epoch {epoch} step {step}: {start}')
                 total_batched_samples += 1
                 if rng_to_sync:
                     self._load_rng_state(resume_from_checkpoint)
@@ -1829,6 +1861,7 @@ class Trainer:
 
                 if step == profile_step and epoch == profile_epoch:
                     import tempfile
+                    xm.wait_device_ops()
                     trace = lambda: xp.trace('127.0.0.1:9012', profile_logdir or tempfile.mkdtemp(), profile_duration or 20000)
                     Thread(target=trace).start()
 
@@ -1907,6 +1940,9 @@ class Trainer:
 
                 if self.control.should_epoch_stop or self.control.should_training_stop:
                     break
+
+                end = datetime.now()
+                print(f'    tracing time: {end - start}')
 
             if step < 0:
                 logger.warning(
