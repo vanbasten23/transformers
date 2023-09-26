@@ -17,10 +17,15 @@ export ACCELERATOR_TYPE=v4-32
 export RUNTIME_VERSION=tpu-ubuntu2204-base
 export PROJECT=mlperf-high-priority-project
 
-gcloud alpha compute tpus queued-resources create $TPU_NAME --node-id $TPU_NAME --zone=$ZONE --project=$PROJECT --accelerator-type=$ACCELERATOR_TYPE --runtime-version=$RUNTIME_VERSION
+gcloud alpha compute tpus queued-resources create $TPU_NAME
+  \ --node-id=$TPU_NAME
+  \ --zone=$ZONE
+  \ --project=$PROJECT
+  \ --accelerator-type=$ACCELERATOR_TYPE
+  \ --runtime-version=$RUNTIME_VERSION
 ```
 
-Change `{TPU\_NAME, ZONE, PROJECT, RUNTIME\_VERSION}` as needed. For v5e, use the `v2-alpha-tpuv5-lite` runtime version in a supported project and zone. And use the following command to query the status of the creation request:
+Change `{TPU_NAME, ZONE, PROJECT, RUNTIME_VERSION}` as needed. For v5e, use the `v2-alpha-tpuv5-lite` runtime version in a supported project and zone. And use the following command to query the status of the creation request:
 ```
 gcloud alpha compute tpus queued-resources describe ${TPU_NAME}  --project ${PROJECT} --zone ${ZONE}
 ```
@@ -55,6 +60,7 @@ gcloud compute tpus tpu-vm scp llama_2_7B.config $TPU_NAME:~/config.json --worke
 
 
 ## Steps to Run HF LLaMA
+Following is the gcloud ssh command to run the training job from the host:
 ```
 gcloud alpha compute tpus tpu-vm ssh ${TPU_NAME} \
 --zone ${ZONE} \
@@ -102,14 +108,14 @@ python examples/pytorch/language-modeling/run_clm.py \
 
 
 
-*   `PJRT\_DEVICE`: Specify the XLA device.
-*   `XLA\_USE\_BF16`: Force to use bfloat16 as default dtype.
-*   `XLA\_IR\_DEBUG`: Capture Python stack trace in Lazy IRs.
-*   `XLA\_HLO\_DEBUG`: Capture Python stack trace in HLOs.
-*   `PROFILE\_EPOCH`: Specify which epoch to start taking the profile.
-*   `PROFILE\_STEP`: Specify which step to start taking the profile.
-*   `PROFILE\_DURATION\_MS`: Specify how long the profiling will last.
-*   `PROFILE\_LOGDIR`: Specify where to put the profiling results.
+*   `PJRT_DEVICE`: Specify the XLA device.
+*   `XLA_USE_BF16`: Force to use bfloat16 as default dtype.
+*   `XLA_IR_DEBUG`: Capture Python stack trace in Lazy IRs.
+*   `XLA_HLO_DEBUG`: Capture Python stack trace in HLOs.
+*   `PROFILE_EPOCH`: Specify which epoch to start taking the profile.
+*   `PROFILE_STEP`: Specify which step to start taking the profile.
+*   `PROFILE_DURATION_MS`: Specify how long the profiling will last.
+*   `PROFILE_LOGDIR`: Specify where to put the profiling results.
 
 
 ### HF SPMD Arguments Explained
