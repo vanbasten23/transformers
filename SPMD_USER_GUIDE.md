@@ -1,4 +1,4 @@
-# User Guide: Running HuggingFace LLaMA 2 Training on v4 and v5e
+# User Guide: Running HuggingFace Llama 2 Training on v4 and v5e
 
 
 This user guide provides a concise overview of the essential steps required to run HuggingFace (HF) Llama 2 training on both v4 and v5e. It first demonstrates how to do so on barebone TPU VMs, and then shares a Dockerfile for those who would prefer to run it in a container.
@@ -59,7 +59,7 @@ gcloud compute tpus tpu-vm scp llama_2_7B.config $TPU_NAME:~/config.json --worke
 ```
 
 
-## Steps to Run HF LLaMA
+## Steps to Run HF Llama 2
 Following is the gcloud ssh command to run the training job from the host:
 ```
 gcloud alpha compute tpus tpu-vm ssh ${TPU_NAME} \
@@ -130,11 +130,11 @@ python examples/pytorch/language-modeling/run_clm.py \
 *   `--spmd_debug`: [bool] Print verbose debug logs related to SPMD. Default: False
 
 
-## Steps to Run HF LLaMA in Docker
+## Steps to Run HF Llama 2 in Docker
 
 To run using Docker, you can bake the above commands into an image that is shared across your worker VMs or even used in GKE. To follow this guide, you will need write access to a docker repo that your TPU VMs have read access to. This can be achieved using [Artifact Registry](https://cloud.google.com/artifact-registry).
 
-The following Dockerfile will build an image which runs a LLaMA2 training workload:
+The following Dockerfile will build an image which runs a Llama 2 training workload:
 ```
 FROM us-central1-docker.pkg.dev/tpu-pytorch-releases/docker/xla:nightly_3.8_tpuvm
 
