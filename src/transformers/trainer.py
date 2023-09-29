@@ -1817,7 +1817,8 @@ class Trainer:
             profile_logdir = os.environ.get('PROFILE_LOGDIR', None)
             for step, inputs in enumerate(epoch_iterator):
                 if step == 0 and epoch == 0:
-                    logger.info('  input sharding', {k: (v.shape, torch_xla._XLAC._get_xla_sharding_spec(v)) for k, v in inputs.items()})
+                    for k, v in inputs.items():
+                      print('  input sharding', str(k), (v.shape, torch_xla._XLAC._get_xla_sharding_spec(v)))
                 total_batched_samples += 1
                 if rng_to_sync:
                     self._load_rng_state(resume_from_checkpoint)
