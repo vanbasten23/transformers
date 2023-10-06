@@ -267,9 +267,9 @@ class DataTrainingArguments:
     keep_linebreaks: bool = field(
         default=True, metadata={"help": "Whether to keep line breaks when using TXT files or not."}
     )
-    augment_factor: Optional[int] = field(
+    train_data_augment_factor: Optional[int] = field(
         default=None,
-        metadata={"help": "Augmentation factor to augment dataset by duplication."},
+        metadata={"help": "Augmentation factor to augment training dataset by duplication."},
     )
 
     def __post_init__(self):
@@ -369,8 +369,8 @@ def main():
             use_auth_token=True if model_args.use_auth_token else None,
             streaming=data_args.streaming,
         )
-        if data_args.augment_factor is not None:
-            augment_factor = data_args.augment_factor
+        if data_args.train_data_augment_factor is not None:
+            augment_factor = data_args.train_data_augment_factor
             augment_list = []
             for _ in range(augment_factor):
                 augment_list.append(raw_datasets['train'])
