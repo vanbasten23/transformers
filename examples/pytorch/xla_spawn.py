@@ -46,6 +46,8 @@ def parse_args():
     # Optional arguments for the launch helper
     parser.add_argument("--num_cores", type=int, default=1, help="Number of TPU cores to use (1 or 8).")
 
+    parser.add_argument("--multiple_device", type=bool, default=False, help="User all available TPU cores or only use a single core.")
+
     # positional
     parser.add_argument(
         "training_script",
@@ -76,6 +78,13 @@ def main():
     # Patch sys.argv
     sys.argv = [args.training_script] + args.training_script_args + ["--tpu_num_cores", str(args.num_cores)]
 
+    # Add '--multiple_device' flag so user don't need to pass in the number of TPU cores. We only need a bool
+    # becasue PJRT will always use all available TPU devices or 1 TPU device.
+    # Passing 'None' to the underlying PJRT spawn function would use all TPU devices.
+    if args.num_cores != 1:
+        args.num_cores = None
+    if args.multiple_device:
+        args.num_cores = None
     xmp.spawn(mod._mp_fn, args=(), nprocs=args.num_cores)
 
 
