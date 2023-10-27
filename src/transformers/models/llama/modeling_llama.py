@@ -1111,7 +1111,6 @@ class LlamaModel(LlamaPreTrainedModel):
                 )
 
         # embed positions
-        # Is this the input to the model?
         hidden_states = inputs_embeds
         # Apply 2D sharding:
         # hidden_states (batch, length, hidden)
