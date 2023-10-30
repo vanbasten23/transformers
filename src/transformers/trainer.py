@@ -828,11 +828,14 @@ class Trainer:
         else:
             data_collator = self._get_collator_with_removed_columns(data_collator, description="training")
 
+        logger.info(f"set persistent worker = true")
         dataloader_params = {
             "batch_size": self._train_batch_size,
             "collate_fn": data_collator,
             "num_workers": self.args.dataloader_num_workers,
             "pin_memory": self.args.dataloader_pin_memory,
+            "persistent_workers": True,
+            "shuffle": False,
         }
 
         if not isinstance(train_dataset, torch.utils.data.IterableDataset):
@@ -1747,7 +1750,17 @@ class Trainer:
                     break
 
         total_batched_samples = 0
+        profile_step = int(os.environ.get('PROFILE_STEP', 2))
+        profile_epoch = int(os.environ.get('PROFILE_EPOCH', 1))
+        profile_duration = int(os.environ.get('PROFILE_DURATION_MS', 90000))
+        profile_logdir = os.environ.get('PROFILE_LOGDIR', '/tmp/dataloader_profile/epoch1_90s')
         for epoch in range(epochs_trained, num_train_epochs):
+            if epoch == profile_epoch:
+                if is_torch_tpu_available() and xm.is_master_ordinal():
+                    logger.info("start profiling")
+                    trace = lambda: xp.trace('127.0.0.1:9012', profile_logdir or tempfile.mkdtemp(), profile_duration or 20000)
+                    Thread(target=trace).start()
+            logger.info("current epoch {}".format(epoch))
             epoch_iterator = train_dataloader
 
             # Reset the past mems state at the beginning of each epoch if necessary.
@@ -1760,10 +1773,12 @@ class Trainer:
                 else args.max_steps * args.gradient_accumulation_steps
             )
             self.control = self.callback_handler.on_epoch_begin(args, self.state, self.control)
+            logger.info("epoch {}: after on_epoch_begin".format(epoch))
 
             if epoch == epochs_trained and resume_from_checkpoint is not None and steps_trained_in_current_epoch == 0:
                 self._load_rng_state(resume_from_checkpoint)
 
+            logger.info("epoch {}: after _load_rng_state".format(epoch))
             rng_to_sync = False
             steps_skipped = 0
             if steps_trained_in_current_epoch > 0:
@@ -1773,11 +1788,11 @@ class Trainer:
                 rng_to_sync = True
 
             step = -1
-            profile_step = int(os.environ.get('PROFILE_STEP', 2))
-            profile_epoch = int(os.environ.get('PROFILE_EPOCH', 1))
-            profile_duration = int(os.environ.get('PROFILE_DURATION_MS', 60000))
-            profile_logdir = os.environ.get('PROFILE_LOGDIR', None)
-            for step, inputs in enumerate(epoch_iterator):
+            logger.info("epoch {}: after skip_first_batches".format(epoch))
+            epoch_it = enumerate(epoch_iterator)
+            # for step, inputs in enumerate(epoch_iterator):
+            logger.info("epoch {}: after it".format(epoch))
+            for step, inputs in epoch_it:
                 logger.info("current step {}".format(step))
                 total_batched_samples += 1
                 if rng_to_sync:
@@ -1799,11 +1814,11 @@ class Trainer:
                 if step % args.gradient_accumulation_steps == 0:
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
-                if step == profile_step and epoch == profile_epoch:
-                    if is_torch_tpu_available() and xm.is_master_ordinal():
-                        logger.info("start profiling")
-                        trace = lambda: xp.trace('127.0.0.1:9012', profile_logdir or tempfile.mkdtemp(), profile_duration or 20000)
-                        Thread(target=trace).start()
+                # if step == profile_step and epoch == profile_epoch:
+                #     if is_torch_tpu_available() and xm.is_master_ordinal():
+                #         logger.info("start profiling")
+                #         trace = lambda: xp.trace('127.0.0.1:9012', profile_logdir or tempfile.mkdtemp(), profile_duration or 20000)
+                #         Thread(target=trace).start()
 
                 with self.accelerator.accumulate(model):
                     tr_loss_step = self.training_step(model, inputs)
@@ -1912,9 +1927,11 @@ class Trainer:
                 )
                 self.control.should_training_stop = True
 
+            logger.info("epoch {}: before on_epoch_end".format(epoch))
             self.control = self.callback_handler.on_epoch_end(args, self.state, self.control)
+            logger.info("epoch {}: after on_epoch_end".format(epoch))
             self._maybe_log_save_evaluate(tr_loss, model, trial, epoch, ignore_keys_for_eval)
-
+            logger.info("epoch {}: after _maybe_log_save_evaluate".format(epoch))
             if DebugOption.TPU_METRICS_DEBUG in self.args.debug:
                 if is_torch_tpu_available():
                     # tpu-comment: Logging debug metrics for PyTorch/XLA (compile, execute times, ops, etc.)
@@ -1942,7 +1959,7 @@ class Trainer:
                 smp.barrier()
 
             self._load_best_model()
-
+        logger.info("epoch {}: after xm.rendezvous".format(epoch))
         # add remaining tr_loss
         self._total_loss_scalar += tr_loss.item()
         train_loss = self._total_loss_scalar / self.state.global_step
@@ -1958,9 +1975,10 @@ class Trainer:
 
         self.log(metrics)
 
+        logger.info("epoch {}: before _sorted_checkpoints".format(epoch))
         run_dir = self._get_output_dir(trial)
         checkpoints_sorted = self._sorted_checkpoints(use_mtime=False, output_dir=run_dir)
-
+        logger.info("epoch {}: after _sorted_checkpoints".format(epoch))
         # Delete the last checkpoint when save_total_limit=1 if it's different from the best checkpoint and process allowed to save.
         if self.args.should_save and self.state.best_model_checkpoint is not None and self.args.save_total_limit == 1:
             for checkpoint in checkpoints_sorted:
