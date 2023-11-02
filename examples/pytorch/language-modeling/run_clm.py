@@ -614,9 +614,9 @@ def main():
             elif 'o_proj' in name:
                 xs.mark_sharding(param, spmd_mesh, ('model', 'data'))
             elif 'gate_proj' in name or 'up_proj' in name:
-                xs.mark_sharding(param, spmd_mesh, ('model', 'data'))
-            elif 'down_proj' in name:
                 xs.mark_sharding(param, spmd_mesh, ('data', 'model'))
+            elif 'down_proj' in name:
+                xs.mark_sharding(param, spmd_mesh, ('model', 'data'))
             elif 'lm_head' in name:
                 xs.mark_sharding(param, spmd_mesh, ('model', 'data'))
 
