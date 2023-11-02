@@ -388,7 +388,7 @@ class LlamaMLP(nn.Module):
             # Apply 2D sharding:
             # up_proj (batch, length, intermediate)
             # mesh (data, None, model)
-            partition_spec = (('dcn', 'data'), None, 'model')
+            partition_spec = (('dcn', 'data'), None, None)
             if self.spmd_debug:
                 print('> Sharding up_proj', up_proj.shape)
             xs.mark_sharding(up_proj, self.spmd_mesh, partition_spec)
@@ -532,7 +532,7 @@ class LlamaAttention(nn.Module):
         # key_states (batch, length, hidden / attention_heads * key_value_heads)
         # value_states (batch, length, hidden / attention_heads * key_value_heads)
         # mesh (data, None, model)
-        partition_spec = (('dcn', 'data'), None, 'model')
+        partition_spec = (('dcn', 'data'), None, None)
         if self.spmd_debug:
             print('> Sharding query_states', query_states.shape, self.spmd_mesh.get_logical_mesh().shape, partition_spec)
             print('> Sharding key_states', key_states.shape, self.spmd_mesh.get_logical_mesh().shape, partition_spec)
@@ -628,7 +628,7 @@ class LlamaAttention(nn.Module):
         # mesh (data, None, model)
         if self.spmd_debug:
             print('> Sharding attn_output', attn_output.shape, self.spmd_mesh.get_logical_mesh().shape, partition_spec)
-        xs.mark_sharding(attn_output, self.spmd_mesh, (('dcn', 'data'), None, 'model'))
+        xs.mark_sharding(attn_output, self.spmd_mesh, (('dcn', 'data'), None, None))
         if self.spmd_debug:
             print(torch_xla._XLAC._get_xla_sharding_spec(attn_output))
 
@@ -1117,7 +1117,7 @@ class LlamaModel(LlamaPreTrainedModel):
         # mesh (data, None, model)
         if self.spmd_debug:
             print('> Sharding hidden_states', hidden_states.shape, self.spmd_mesh.get_logical_mesh().shape)
-        xs.mark_sharding(hidden_states, self.spmd_mesh, (('dcn', 'data'), None, 'model'))
+        xs.mark_sharding(hidden_states, self.spmd_mesh, (('dcn', 'data'), None, None))
         if self.spmd_debug:
             print(torch_xla._XLAC._get_xla_sharding_spec(hidden_states))
 
@@ -1284,7 +1284,7 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
         else:
             logits = self.lm_head(hidden_states)
         logits = logits.float()
-        xs.mark_sharding(logits, self.spmd_mesh, (('dcn', 'data'), None, 'model'))
+        xs.mark_sharding(logits, self.spmd_mesh, (('dcn', 'data'), None, None))
 
         loss = None
         if labels is not None:
