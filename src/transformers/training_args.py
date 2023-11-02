@@ -625,11 +625,17 @@ class TrainingArguments:
             This will iterate over the entire training dataloader once beforehand,
 
             and will slow down the entire process.
+        use_checkpoint_manager (`bool`, *optional*):
+            Whether or not to use the CheckpointManager to run distributed checkpoints.
     """
 
     framework = "pt"
     output_dir: str = field(
         metadata={"help": "The output directory where the model predictions and checkpoints will be written."},
+    )
+    use_checkpoint_manager: Optional[bool] = field(
+        default=False,
+        metadata={"help": "If set to `True`, uses the CheckpointManager to save state."},
     )
     overwrite_output_dir: bool = field(
         default=False,
