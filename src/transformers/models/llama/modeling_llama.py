@@ -385,27 +385,19 @@ class LlamaMLP(nn.Module):
             down_proj = sum(down_proj)
         else:
             up_proj = self.up_proj(x)
-            # Apply 2D sharding:
-            # up_proj (batch, length, intermediate)
-            # mesh (data, None, model)
-            partition_spec = (('dcn', 'data'), None, 'model')
-            if self.spmd_debug:
-                print('> Sharding up_proj', up_proj.shape)
-            xs.mark_sharding(up_proj, self.spmd_mesh, partition_spec)
-            if self.spmd_debug:
-                print(torch_xla._XLAC._get_xla_sharding_spec(up_proj))
-
             gate_proj = self.act_fn(self.gate_proj(x))
+
+            dot_proj = gate_proj * up_proj
             # Apply 2D sharding:
-            # gate_proj (batch, length, intermediate)
+            # dot_proj (batch, length, intermediate)
             # mesh (data, None, model)
             if self.spmd_debug:
-                print('> Sharding gate_proj', gate_proj.shape)
-            xs.mark_sharding(gate_proj, self.spmd_mesh, partition_spec)
+                print('> Sharding gate_proj', dot_proj.shape)
+            xs.mark_sharding(dot_proj, self.spmd_mesh, partition_spec)
             if self.spmd_debug:
-                print(torch_xla._XLAC._get_xla_sharding_spec(gate_proj))
+                print(torch_xla._XLAC._get_xla_sharding_spec(dot_proj))
 
-            down_proj = self.down_proj(gate_proj * up_proj)
+            down_proj = self.down_proj(dot_proj)
             # down_proj (batch, length, hidden)
             # mesh (data, None, model)
             if self.spmd_debug:
