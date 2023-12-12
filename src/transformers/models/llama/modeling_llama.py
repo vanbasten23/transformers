@@ -345,17 +345,11 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
 
-# For PyTorch/XLA's SPMD sharding
-def init_spmd(model, config):
-    model.spmd_debug = config.spmd_debug
-    model.spmd_mesh = config.spmd_mesh
-    model.spmd_fsdp_sharding = config.spmd_fsdp_sharding
 
 class LlamaMLP(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        init_spmd(self, config)
 
         self.hidden_size = config.hidden_size
         self.intermediate_size = config.intermediate_size
@@ -367,7 +361,6 @@ class LlamaMLP(nn.Module):
     @xp.trace_me("LlamaMLP")
     def forward(self, x):
         if self.config.pretraining_tp > 1:
-            assert False  # Shouldn't reach here
             slice = self.intermediate_size // self.config.pretraining_tp
             gate_proj_slices = self.gate_proj.weight.split(slice, dim=0)
             up_proj_slices = self.up_proj.weight.split(slice, dim=0)
@@ -384,35 +377,7 @@ class LlamaMLP(nn.Module):
             ]
             down_proj = sum(down_proj)
         else:
-            up_proj = self.up_proj(x)
-            # Apply 2D sharding:
-            # up_proj (batch, length, intermediate)
-            # mesh (data, None, model)
-            partition_spec = (('dcn', 'data'), None, 'model')
-            if self.spmd_debug:
-                print('> Sharding up_proj', up_proj.shape)
-            xs.mark_sharding(up_proj, self.spmd_mesh, partition_spec)
-            if self.spmd_debug:
-                print(torch_xla._XLAC._get_xla_sharding_spec(up_proj))
-
-            gate_proj = self.act_fn(self.gate_proj(x))
-            # Apply 2D sharding:
-            # gate_proj (batch, length, intermediate)
-            # mesh (data, None, model)
-            if self.spmd_debug:
-                print('> Sharding gate_proj', gate_proj.shape)
-            xs.mark_sharding(gate_proj, self.spmd_mesh, partition_spec)
-            if self.spmd_debug:
-                print(torch_xla._XLAC._get_xla_sharding_spec(gate_proj))
-
-            down_proj = self.down_proj(gate_proj * up_proj)
-            # down_proj (batch, length, hidden)
-            # mesh (data, None, model)
-            if self.spmd_debug:
-                print('> Sharding down_proj', down_proj.shape)
-            xs.mark_sharding(down_proj, self.spmd_mesh, partition_spec)
-            if self.spmd_debug:
-                print(torch_xla._XLAC._get_xla_sharding_spec(down_proj))
+            down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
         return down_proj
 
@@ -435,7 +400,6 @@ class LlamaAttention(nn.Module):
     def __init__(self, config: LlamaConfig):
         super().__init__()
         self.config = config
-        init_spmd(self, config)
 
         self.hidden_size = config.hidden_size
         self.num_heads = config.num_attention_heads
@@ -527,24 +491,6 @@ class LlamaAttention(nn.Module):
             key_states = self.k_proj(hidden_states)
             value_states = self.v_proj(hidden_states)
 
-        # Apply 2D sharding:
-        # query_states (batch, length, hidden)
-        # key_states (batch, length, hidden / attention_heads * key_value_heads)
-        # value_states (batch, length, hidden / attention_heads * key_value_heads)
-        # mesh (data, None, model)
-        partition_spec = (('dcn', 'data'), None, 'model')
-        if self.spmd_debug:
-            print('> Sharding query_states', query_states.shape, self.spmd_mesh.get_logical_mesh().shape, partition_spec)
-            print('> Sharding key_states', key_states.shape, self.spmd_mesh.get_logical_mesh().shape, partition_spec)
-            print('> Sharding value_states', value_states.shape, self.spmd_mesh.get_logical_mesh().shape, partition_spec)
-        xs.mark_sharding(query_states, self.spmd_mesh, partition_spec)
-        xs.mark_sharding(key_states, self.spmd_mesh, partition_spec)
-        xs.mark_sharding(value_states, self.spmd_mesh, partition_spec)
-        if self.spmd_debug:
-            print(torch_xla._XLAC._get_xla_sharding_spec(query_states))
-            print(torch_xla._XLAC._get_xla_sharding_spec(key_states))
-            print(torch_xla._XLAC._get_xla_sharding_spec(value_states))
-
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
@@ -565,21 +511,7 @@ class LlamaAttention(nn.Module):
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
-        # query_states Batch Num_head Seq Head_dim
-        # key_states   Batch Num_head Kv_seq Head_dim
-        #attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
-        assert query_states.shape == torch.Size((bsz, self.num_heads, q_len, self.head_dim)), f'incorrect query_states shape: {query_states.shape}'
-        assert key_states.shape == torch.Size((bsz, self.num_heads, kv_seq_len, self.head_dim)), f'incorrect key_states_states shape: {key_states.shape}'
-        attn_weights = torch.einsum('bnsh,bnkh->bnsk', query_states, key_states) / math.sqrt(self.head_dim)
-        # Apply 2D sharding:
-        # attn_weights (batch, num_attention_heads, length, length)
-        # mesh (data, model, none, none)
-        if self.spmd_debug:
-            print('> Sharding attn_weights', attn_weights.shape)
-        xs.mark_sharding(attn_weights, self.spmd_mesh, (('dcn', 'data'), 'model', None, None))
-
-        if self.spmd_debug:
-            print(torch_xla._XLAC._get_xla_sharding_spec(attn_weights))
+        attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
 
         if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
             raise ValueError(
@@ -596,12 +528,7 @@ class LlamaAttention(nn.Module):
 
         # upcast attention to fp32
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-        # attn_weights Batch Num_head Seq Kv_seq
-        # value_states Batch Num_head Seq Head_dim
-        # attn_output = torch.matmul(attn_weights, value_states)
-        assert attn_weights.shape == torch.Size((bsz, self.num_heads, q_len, kv_seq_len)), f'incorrect atten_weight shape: {attn_weights.shape}'
-        assert value_states.shape == torch.Size((bsz, self.num_heads, kv_seq_len, self.head_dim)), f'incorrect value_states shape: {value_states.shape}'
-        attn_output = torch.einsum('bnsk,bnkh->bnsh', attn_weights, value_states)
+        attn_output = torch.matmul(attn_weights, value_states)
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
             raise ValueError(
@@ -622,15 +549,6 @@ class LlamaAttention(nn.Module):
 
         if not output_attentions:
             attn_weights = None
-
-        # Apply 2D sharding:
-        # attn_output (batch, length, hidden)
-        # mesh (data, None, model)
-        if self.spmd_debug:
-            print('> Sharding attn_output', attn_output.shape, self.spmd_mesh.get_logical_mesh().shape, partition_spec)
-        xs.mark_sharding(attn_output, self.spmd_mesh, (('dcn', 'data'), None, 'model'))
-        if self.spmd_debug:
-            print(torch_xla._XLAC._get_xla_sharding_spec(attn_output))
 
         return attn_output, attn_weights, past_key_value
 
@@ -1028,7 +946,6 @@ class LlamaModel(LlamaPreTrainedModel):
 
     def __init__(self, config: LlamaConfig):
         super().__init__(config)
-        init_spmd(self, config)
 
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
@@ -1112,14 +1029,6 @@ class LlamaModel(LlamaPreTrainedModel):
 
         # embed positions
         hidden_states = inputs_embeds
-        # Apply 2D sharding:
-        # hidden_states (batch, length, hidden)
-        # mesh (data, None, model)
-        if self.spmd_debug:
-            print('> Sharding hidden_states', hidden_states.shape, self.spmd_mesh.get_logical_mesh().shape)
-        xs.mark_sharding(hidden_states, self.spmd_mesh, (('dcn', 'data'), None, 'model'))
-        if self.spmd_debug:
-            print(torch_xla._XLAC._get_xla_sharding_spec(hidden_states))
 
         if self.gradient_checkpointing and self.training:
             if use_cache:
@@ -1189,7 +1098,6 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
 
     def __init__(self, config):
         super().__init__(config)
-        init_spmd(self, config)
 
         self.model = LlamaModel(config)
         self.vocab_size = config.vocab_size
@@ -1284,7 +1192,6 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
         else:
             logits = self.lm_head(hidden_states)
         logits = logits.float()
-        xs.mark_sharding(logits, self.spmd_mesh, (('dcn', 'data'), None, 'model'))
 
         loss = None
         if labels is not None:
