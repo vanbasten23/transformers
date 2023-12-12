@@ -41,9 +41,10 @@ from ...utils import (
 )
 from .configuration_llama import LlamaConfig
 
+import torch_xla.core.xla_model as xm
 import torch_xla.debug.profiler as xp
-import torch_xla.experimental.xla_sharding as xs
-import torch_xla
+from torch_xla.distributed.fsdp import checkpoint_module
+from torch_xla.experimental.spmd_fully_sharded_data_parallel import SpmdFullyShardedDataParallel as FSDPv2
 
 if is_flash_attn_2_available():
     from flash_attn import flash_attn_func, flash_attn_varlen_func
@@ -953,7 +954,17 @@ class LlamaModel(LlamaPreTrainedModel):
         self.attn_mask_converter = AttnMaskConverter(is_causal=True)
 
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
-        self.layers = nn.ModuleList([LlamaDecoderLayer(config) for _ in range(config.num_hidden_layers)])
+
+        layers = []
+        for _ in range(config.num_hidden_layers):
+            layer = LlamaDecoderLayer(config).to(xm.xla_device())
+            # Apply gradient checkpointing directly here, before the FSDP wrapper.
+            # Otherwise, recursively loop into children modules will end up with inifinite loop.
+            # TODO (alanwaketan): investigate why this is happening.
+            layer = FSDPv2(checkpoint_module(layer), config.spmd_mesh)
+            layers.append(layer)
+        self.layers = nn.ModuleList(layers)
+
         self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
         self.gradient_checkpointing = False

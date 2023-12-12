@@ -174,14 +174,6 @@ class ModelArguments:
             )
         },
     )
-    spmd_grad_chkpt: bool = field(
-        default=False,
-        metadata={
-            "help": (
-                "Apply gradient checkpointing to the model"
-            )
-        },
-    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (self.config_name is not None or self.model_name_or_path is not None):
@@ -513,16 +505,14 @@ def main():
 
     model = model.to(xm.xla_device(), dtype=getattr(torch, model_args.torch_dtype))
 
+    from torch_xla.experimental.spmd_fully_sharded_data_parallel import SpmdFullyShardedDataParallel as FSDPv2
+    def shard_output(output, mesh):
+        xs.mark_sharding(output.logits, mesh, ('fsdp', None, None))
+    model = FSDPv2(model, spmd_mesh, shard_output)
+
     # All params should be sharded by now, and print their sharding spec.
     for name, param in model.named_parameters():
         print(f'Sharding {name} {param.shape} {torch_xla._XLAC._get_xla_sharding_spec(param)}')
-
-    if model_args.spmd_grad_chkpt:
-        print("Applying gradient checkpointing")
-        from torch_xla.distributed.fsdp import checkpoint_module
-        for i, block in enumerate(model.model.layers):
-            # LLaMA-specific
-            model.model.layers[i] = checkpoint_module(block)
 
     # Preprocessing the datasets.
     # First we tokenize all the texts.

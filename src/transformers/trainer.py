@@ -468,6 +468,7 @@ class Trainer:
             or ((args.fp16_full_eval or args.bf16_full_eval) and not args.do_train)
             or (self.fsdp is not None)
             or self.is_fsdp_enabled
+            or self.args.spmd_mesh is not None
         ):
             self.place_model_on_device = False
 
@@ -1437,7 +1438,7 @@ class Trainer:
         if is_torch_tpu_available():
             import torch_xla.experimental.xla_sharding as xs
             import torch_xla.distributed.parallel_loader as pl
-            sharding_spec = xs.ShardingSpec(self.args.spmd_mesh, (('dcn', 'data'), None))
+            sharding_spec = xs.ShardingSpec(self.args.spmd_mesh, (('dcn', 'fsdp'), None))
             # TODO(jonbolin): Once integrated with Accelerate, we can use the Accelerate-prepared
             # MpDeviceLoader instead of manually adding sharding and adding a dataset attribute.
             loader = pl.MpDeviceLoader(dataloader, self.args.device, input_sharding=sharding_spec, loader_prefetch_size=self.args.train_batch_size, device_prefetch_size=4)
