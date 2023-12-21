@@ -18,6 +18,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ PyTorch LLaMA model."""
+import os
 import math
 from typing import List, Optional, Tuple, Union
 
@@ -254,30 +255,33 @@ class LlamaMLP(nn.Module):
             # up_proj (batch, length, intermediate)
             # mesh (data, None, model)
             data_model_mesh = get_mesh(self.spmd_iota_mesh, (self.spmd_data_axis, 1, self.spmd_model_axis))
-            if self.spmd_debug:
-                print('> Sharding up_proj', up_proj.shape)
-            xs.mark_sharding(up_proj, data_model_mesh, range(len(up_proj.shape)))
-            if self.spmd_debug:
-                print(torch_xla._XLAC._get_xla_sharding_spec(up_proj))
+            if not os.environ['XLA_AUTO_SPMD']:
+              if self.spmd_debug:
+                  print('> Sharding up_proj', up_proj.shape)
+              xs.mark_sharding(up_proj, data_model_mesh, range(len(up_proj.shape)))
+              if self.spmd_debug:
+                  print(torch_xla._XLAC._get_xla_sharding_spec(up_proj))
 
             gate_proj = self.act_fn(self.gate_proj(x))
             # Apply 2D sharding:
             # gate_proj (batch, length, intermediate)
             # mesh (data, None, model)
-            if self.spmd_debug:
-                print('> Sharding gate_proj', gate_proj.shape)
-            xs.mark_sharding(gate_proj, data_model_mesh, range(len(up_proj.shape)))
-            if self.spmd_debug:
-                print(torch_xla._XLAC._get_xla_sharding_spec(gate_proj))
+            if not os.environ['XLA_AUTO_SPMD']:
+              if self.spmd_debug:
+                  print('> Sharding gate_proj', gate_proj.shape)
+              xs.mark_sharding(gate_proj, data_model_mesh, range(len(up_proj.shape)))
+              if self.spmd_debug:
+                  print(torch_xla._XLAC._get_xla_sharding_spec(gate_proj))
 
             down_proj = self.down_proj(gate_proj * up_proj)
             # down_proj (batch, length, hidden)
             # mesh (data, None, model)
-            if self.spmd_debug:
-                print('> Sharding down_proj', down_proj.shape)
-            xs.mark_sharding(down_proj, data_model_mesh, range(len(down_proj.shape)))
-            if self.spmd_debug:
-                print(torch_xla._XLAC._get_xla_sharding_spec(down_proj))
+            if not os.environ['XLA_AUTO_SPMD']:
+              if self.spmd_debug:
+                  print('> Sharding down_proj', down_proj.shape)
+              xs.mark_sharding(down_proj, data_model_mesh, range(len(down_proj.shape)))
+              if self.spmd_debug:
+                  print(torch_xla._XLAC._get_xla_sharding_spec(down_proj))
 
         return down_proj
 
@@ -380,17 +384,18 @@ class LlamaAttention(nn.Module):
         # value_states (batch, length, hidden / attention_heads * key_value_heads)
         # mesh (data, None, model)
         data_model_mesh = get_mesh(self.spmd_iota_mesh, (self.spmd_data_axis, 1, self.spmd_model_axis))
-        if self.spmd_debug:
-            print('> Sharding query_states', query_states.shape)
-            print('> Sharding key_states', key_states.shape)
-            print('> Sharding value_states', value_states.shape)
-        xs.mark_sharding(query_states, data_model_mesh, range(len(query_states.shape)))
-        xs.mark_sharding(key_states, data_model_mesh, range(len(key_states.shape)))
-        xs.mark_sharding(value_states, data_model_mesh, range(len(value_states.shape)))
-        if self.spmd_debug:
-            print(torch_xla._XLAC._get_xla_sharding_spec(query_states))
-            print(torch_xla._XLAC._get_xla_sharding_spec(key_states))
-            print(torch_xla._XLAC._get_xla_sharding_spec(value_states))
+        if not os.environ['XLA_AUTO_SPMD']:
+          if self.spmd_debug:
+              print('> Sharding query_states', query_states.shape)
+              print('> Sharding key_states', key_states.shape)
+              print('> Sharding value_states', value_states.shape)
+          xs.mark_sharding(query_states, data_model_mesh, range(len(query_states.shape)))
+          xs.mark_sharding(key_states, data_model_mesh, range(len(key_states.shape)))
+          xs.mark_sharding(value_states, data_model_mesh, range(len(value_states.shape)))
+          if self.spmd_debug:
+              print(torch_xla._XLAC._get_xla_sharding_spec(query_states))
+              print(torch_xla._XLAC._get_xla_sharding_spec(key_states))
+              print(torch_xla._XLAC._get_xla_sharding_spec(value_states))
 
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
@@ -422,12 +427,13 @@ class LlamaAttention(nn.Module):
         # Apply 2D sharding:
         # attn_weights (batch, num_attention_heads, length, length)
         # mesh (data, model, none, none)
-        if self.spmd_debug:
-            print('> Sharding attn_weights', attn_weights.shape)
-        attn_mesh = get_mesh(self.spmd_iota_mesh, (self.spmd_data_axis, self.spmd_model_axis, 1, 1))
-        xs.mark_sharding(attn_weights, attn_mesh, range(len(attn_weights.shape)))
-        if self.spmd_debug:
-            print(torch_xla._XLAC._get_xla_sharding_spec(attn_weights))
+        if not os.environ['XLA_AUTO_SPMD']:
+          if self.spmd_debug:
+              print('> Sharding attn_weights', attn_weights.shape)
+          attn_mesh = get_mesh(self.spmd_iota_mesh, (self.spmd_data_axis, self.spmd_model_axis, 1, 1))
+          xs.mark_sharding(attn_weights, attn_mesh, range(len(attn_weights.shape)))
+          if self.spmd_debug:
+              print(torch_xla._XLAC._get_xla_sharding_spec(attn_weights))
 
         if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
             raise ValueError(
@@ -473,11 +479,12 @@ class LlamaAttention(nn.Module):
         # Apply 2D sharding:
         # attn_output (batch, length, hidden)
         # mesh (data, None, model)
-        if self.spmd_debug:
-            print('> Sharding attn_output', attn_output.shape)
-        xs.mark_sharding(attn_output, data_model_mesh, range(len(attn_output.shape)))
-        if self.spmd_debug:
-            print(torch_xla._XLAC._get_xla_sharding_spec(attn_output))
+        if not os.environ['XLA_AUTO_SPMD']:
+          if self.spmd_debug:
+              print('> Sharding attn_output', attn_output.shape)
+          xs.mark_sharding(attn_output, data_model_mesh, range(len(attn_output.shape)))
+          if self.spmd_debug:
+              print(torch_xla._XLAC._get_xla_sharding_spec(attn_output))
 
         return attn_output, attn_weights, past_key_value
 
@@ -777,11 +784,12 @@ class LlamaModel(LlamaPreTrainedModel):
         # hidden_states (batch, length, hidden)
         # mesh (data, None, model)
         data_model_mesh = get_mesh(self.spmd_iota_mesh, (self.spmd_data_axis, 1, self.spmd_model_axis))
-        if self.spmd_debug:
-            print('> Sharding hidden_states', hidden_states.shape)
-        xs.mark_sharding(hidden_states, data_model_mesh, (0, 1, 2))
-        if self.spmd_debug:
-            print(torch_xla._XLAC._get_xla_sharding_spec(hidden_states))
+        if not os.environ['XLA_AUTO_SPMD']:
+          if self.spmd_debug:
+              print('> Sharding hidden_states', hidden_states.shape)
+          xs.mark_sharding(hidden_states, data_model_mesh, (0, 1, 2))
+          if self.spmd_debug:
+              print(torch_xla._XLAC._get_xla_sharding_spec(hidden_states))
 
         if self.gradient_checkpointing and self.training:
             if use_cache:
