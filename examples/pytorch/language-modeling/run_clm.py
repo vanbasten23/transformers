@@ -616,7 +616,7 @@ def main():
                 continue
 
             if 'embed_tokens' in name:
-                xs.mark_sharding(param, spmd_mesh, ('data', 'model'))
+                xs.mark_sharding(param, spmd_mesh, ('data', None))
             elif 'q_proj' in name or 'k_proj' in name or 'v_proj' in name:
                 xs.mark_sharding(param, spmd_mesh, ('data', 'model'))
             elif 'o_proj' in name:
@@ -626,7 +626,7 @@ def main():
             elif 'down_proj' in name:
                 xs.mark_sharding(param, spmd_mesh, ('data', 'model'))
             elif 'lm_head' in name:
-                xs.mark_sharding(param, spmd_mesh, ('data', 'model'))
+                xs.mark_sharding(param, spmd_mesh, ('data', None))
 
         print(f'{name} {torch_xla._XLAC._get_xla_sharding_spec(param)}')
 
