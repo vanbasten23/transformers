@@ -31,6 +31,7 @@ import shutil
 import sys
 import time
 import warnings
+import torch
 import torch_xla.debug.profiler as xp
 from torch_xla.experimental.distributed_checkpoint import CheckpointManager
 from collections.abc import Mapping
@@ -1850,7 +1851,13 @@ class Trainer:
             xla_tracing_time = -1
             xla_avg_step_time_starting_step = 2
             xla_avg_step_time_begin_time = -1
+            warmup_iters = 2
             for step, inputs in enumerate(epoch_iterator):
+                if epoch == profile_epoch and step == warmup_iters:
+                    torch.cuda.cudart().cudaProfilerStart()
+                if epoch == profile_epoch and step >= warmup_iters:
+                    torch.cuda.nvtx.range_push("xiowei iteration{}".format(step))
+                
                 if self.state.global_step == 0:
                     print('input sharding', {k: (v.shape, torch_xla._XLAC._get_xla_sharding_spec(v)) for k, v in inputs.items()})
                 total_batched_samples += 1
@@ -1992,6 +1999,11 @@ class Trainer:
                         xm.mark_step()
                     break
 
+                if epoch == profile_epoch and step >= warmup_iters:
+                    torch.cuda.nvtx.range_pop()
+            
+            if epoch == profile_epoch:
+                torch.cuda.cudart().cudaProfilerStop()
             if self.args.xla_measure_avg_step_time:
                 xm.wait_device_ops()
                 num_step = len(epoch_iterator)-xla_avg_step_time_starting_step
