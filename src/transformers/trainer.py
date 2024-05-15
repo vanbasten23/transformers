@@ -1854,6 +1854,7 @@ class Trainer:
             warmup_iters = 2
             for step, inputs in enumerate(epoch_iterator):
                 if epoch == profile_epoch and step == warmup_iters:
+                    print('xw32 start nsight profiling')
                     torch.cuda.cudart().cudaProfilerStart()
                 if epoch == profile_epoch and step >= warmup_iters:
                     torch.cuda.nvtx.range_push("xiowei iteration{}".format(step))
