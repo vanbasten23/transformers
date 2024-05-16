@@ -20,7 +20,6 @@ from typing import Optional, Tuple
 import torch
 from torch import nn
 
-from ... import AutoBackbone
 from ...modeling_utils import PreTrainedModel
 from ...utils import (
     ModelOutput,
@@ -28,14 +27,9 @@ from ...utils import (
     add_start_docstrings_to_model_forward,
     replace_return_docstrings,
 )
-from ...utils.backbone_utils import BackboneMixin
+from ...utils.backbone_utils import load_backbone
+from ..deprecated._archive_maps import VITMATTE_PRETRAINED_MODEL_ARCHIVE_LIST  # noqa: F401, E402
 from .configuration_vitmatte import VitMatteConfig
-
-
-VITMATTE_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "hustvl/vitmatte-small-composition-1k",
-    # See all VitMatte models at https://huggingface.co/models?filter=vitmatte
-]
 
 
 # General docstring
@@ -85,16 +79,6 @@ class VitMattePreTrainedModel(PreTrainedModel):
             module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
             if module.bias is not None:
                 module.bias.data.zero_()
-
-    def _set_gradient_checkpointing(self, module, gradient_checkpointing_func=None):
-        if isinstance(module, BackboneMixin):
-            module.gradient_checkpointing_func = gradient_checkpointing_func
-            module.gradient_checkpointing = gradient_checkpointing_func is not None
-
-            for backbone_module in module.modules():
-                if hasattr(backbone_module, "gradient_checkpointing"):
-                    backbone_module.gradient_checkpointing_func = gradient_checkpointing_func
-                    backbone_module.gradient_checkpointing = gradient_checkpointing_func is not None
 
 
 class VitMatteBasicConv3x3(nn.Module):
@@ -270,7 +254,7 @@ class VitMatteForImageMatting(VitMattePreTrainedModel):
         super().__init__(config)
         self.config = config
 
-        self.backbone = AutoBackbone.from_config(config.backbone_config)
+        self.backbone = load_backbone(config)
         self.decoder = VitMatteDetailCaptureModule(config)
 
         # Initialize weights and apply final processing

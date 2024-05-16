@@ -52,10 +52,7 @@ _IMAGE_CLASS_CHECKPOINT = "MBZUAI/swiftformer-xs"
 _IMAGE_CLASS_EXPECTED_OUTPUT = "tabby, tabby cat"
 
 
-SWIFTFORMER_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "MBZUAI/swiftformer-xs",
-    # See all SwiftFormer models at https://huggingface.co/models?filter=swiftformer
-]
+from ..deprecated._archive_maps import SWIFTFORMER_PRETRAINED_MODEL_ARCHIVE_LIST  # noqa: F401, E402
 
 
 class SwiftFormerPatchEmbedding(nn.Module):
@@ -441,11 +438,6 @@ class SwiftFormerPreTrainedModel(PreTrainedModel):
         elif isinstance(module, (nn.LayerNorm)):
             nn.init.constant_(module.bias, 0)
             nn.init.constant_(module.weight, 1.0)
-
-    def _set_gradient_checkpointing(self, module: SwiftFormerEncoder, gradient_checkpointing_func=None) -> None:
-        if isinstance(module, SwiftFormerEncoder):
-            module.gradient_checkpointing_func = gradient_checkpointing_func
-            module.gradient_checkpointing = gradient_checkpointing_func is not None
 
 
 SWIFTFORMER_START_DOCSTRING = r"""

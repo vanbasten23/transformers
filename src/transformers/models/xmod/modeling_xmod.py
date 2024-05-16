@@ -41,18 +41,8 @@ from .configuration_xmod import XmodConfig
 
 logger = logging.get_logger(__name__)
 
-XMOD_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "facebook/xmod-base",
-    "facebook/xmod-large-prenorm",
-    "facebook/xmod-base-13-125k",
-    "facebook/xmod-base-30-125k",
-    "facebook/xmod-base-30-195k",
-    "facebook/xmod-base-60-125k",
-    "facebook/xmod-base-60-265k",
-    "facebook/xmod-base-75-125k",
-    "facebook/xmod-base-75-269k",
-    # See all X-MOD models at https://huggingface.co/models?filter=xmod
-]
+
+from ..deprecated._archive_maps import XMOD_PRETRAINED_MODEL_ARCHIVE_LIST  # noqa: F401, E402
 
 
 # Copied from transformers.models.roberta.modeling_roberta.RobertaEmbeddings with Roberta->Xmod
@@ -573,7 +563,7 @@ class XmodEncoder(nn.Module):
             past_key_value = past_key_values[i] if past_key_values is not None else None
 
             if self.gradient_checkpointing and self.training:
-                layer_outputs = self.gradient_checkpointing_func(
+                layer_outputs = self._gradient_checkpointing_func(
                     layer_module.__call__,
                     hidden_states,
                     lang_ids,
@@ -673,12 +663,6 @@ class XmodPreTrainedModel(PreTrainedModel):
         elif isinstance(module, nn.LayerNorm):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
-
-    # Copied from transformers.models.roberta.modeling_roberta.RobertaPreTrainedModel._set_gradient_checkpointing with Roberta->Xmod
-    def _set_gradient_checkpointing(self, module, gradient_checkpointing_func=None):
-        if isinstance(module, XmodEncoder):
-            module.gradient_checkpointing_func = gradient_checkpointing_func
-            module.gradient_checkpointing = gradient_checkpointing_func is not None
 
     def set_default_language(self, language: str):
         """
@@ -1051,7 +1035,7 @@ class XmodForCausalLM(XmodPreTrainedModel):
         >>> from transformers import AutoTokenizer, XmodForCausalLM, AutoConfig
         >>> import torch
 
-        >>> tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-base")
+        >>> tokenizer = AutoTokenizer.from_pretrained("FacebookAI/xlm-roberta-base")
         >>> config = AutoConfig.from_pretrained("facebook/xmod-base")
         >>> config.is_decoder = True
         >>> model = XmodForCausalLM.from_pretrained("facebook/xmod-base", config=config)

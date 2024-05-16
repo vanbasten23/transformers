@@ -37,13 +37,8 @@ logger = logging.get_logger(__name__)
 _CHECKPOINT_FOR_DOC = "tau/splinter-base"
 _CONFIG_FOR_DOC = "SplinterConfig"
 
-SPLINTER_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "tau/splinter-base",
-    "tau/splinter-base-qass",
-    "tau/splinter-large",
-    "tau/splinter-large-qass",
-    # See all Splinter models at https://huggingface.co/models?filter=splinter
-]
+
+from ..deprecated._archive_maps import SPLINTER_PRETRAINED_MODEL_ARCHIVE_LIST  # noqa: F401, E402
 
 
 class SplinterEmbeddings(nn.Module):
@@ -459,7 +454,7 @@ class SplinterEncoder(nn.Module):
             past_key_value = past_key_values[i] if past_key_values is not None else None
 
             if self.gradient_checkpointing and self.training:
-                layer_outputs = self.gradient_checkpointing_func(
+                layer_outputs = self._gradient_checkpointing_func(
                     layer_module.__call__,
                     hidden_states,
                     attention_mask,
@@ -538,11 +533,6 @@ class SplinterPreTrainedModel(PreTrainedModel):
         elif isinstance(module, nn.LayerNorm):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
-
-    def _set_gradient_checkpointing(self, module, gradient_checkpointing_func=None):
-        if isinstance(module, SplinterEncoder):
-            module.gradient_checkpointing_func = gradient_checkpointing_func
-            module.gradient_checkpointing = gradient_checkpointing_func is not None
 
 
 SPLINTER_START_DOCSTRING = r"""

@@ -44,11 +44,8 @@ _CONFIG_FOR_DOC = "BridgeTowerConfig"
 _CHECKPOINT_FOR_DOC = "BridgeTower/bridgetower-base"
 _TOKENIZER_FOR_DOC = "RobertaTokenizer"
 
-BRIDGETOWER_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "BridgeTower/bridgetower-base",
-    "BridgeTower/bridgetower-base-itm-mlm"
-    # See all bridgetower models at https://huggingface.co/BridgeTower
-]
+
+from ..deprecated._archive_maps import BRIDGETOWER_PRETRAINED_MODEL_ARCHIVE_LIST  # noqa: F401, E402
 
 
 BRIDGETOWER_START_DOCSTRING = r"""
@@ -804,7 +801,7 @@ class BridgeTowerTextEncoder(nn.Module):
             past_key_value = past_key_values[i] if past_key_values is not None else None
 
             if self.gradient_checkpointing and self.training:
-                layer_outputs = self.gradient_checkpointing_func(
+                layer_outputs = self._gradient_checkpointing_func(
                     layer_module.__call__,
                     hidden_states,
                     attention_mask,

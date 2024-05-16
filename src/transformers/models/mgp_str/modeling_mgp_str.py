@@ -44,10 +44,8 @@ _TOKENIZER_FOR_DOC = "MgpstrTokenizer"
 # Base docstring
 _CHECKPOINT_FOR_DOC = "alibaba-damo/mgp-str-base"
 
-MGP_STR_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "alibaba-damo/mgp-str-base",
-    # See all MGP-STR models at https://huggingface.co/models?filter=mgp-str
-]
+
+from ..deprecated._archive_maps import MGP_STR_PRETRAINED_MODEL_ARCHIVE_LIST  # noqa: F401, E402
 
 
 # Copied from transformers.models.beit.modeling_beit.drop_path
@@ -332,11 +330,6 @@ class MgpstrPreTrainedModel(PreTrainedModel):
         elif isinstance(module, nn.LayerNorm):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
-
-    def _set_gradient_checkpointing(self, module: MgpstrEncoder, gradient_checkpointing_func=None) -> None:
-        if isinstance(module, MgpstrEncoder):
-            module.gradient_checkpointing_func = gradient_checkpointing_func
-            module.gradient_checkpointing = gradient_checkpointing_func is not None
 
 
 MGP_STR_START_DOCSTRING = r"""
