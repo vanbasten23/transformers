@@ -36,10 +36,8 @@ logger = logging.get_logger(__name__)
 _CONFIG_FOR_DOC = "TimesformerConfig"
 _CHECKPOINT_FOR_DOC = "facebook/timesformer"
 
-TIMESFORMER_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "facebook/timesformer-base-finetuned-k400",
-    # See all TimeSformer models at https://huggingface.co/models?filter=timesformer
-]
+
+from ..deprecated._archive_maps import TIMESFORMER_PRETRAINED_MODEL_ARCHIVE_LIST  # noqa: F401, E402
 
 
 # Adapted from https://github.com/facebookresearch/TimeSformer/blob/a5ef29a7b7264baff199a30b3306ac27de901133/timesformer/models/vit.py#L155
@@ -305,7 +303,7 @@ class TimesformerLayer(nn.Module):
         ]  # stochastic depth decay rule
         drop_path_rate = drop_path_rates[layer_index]
 
-        self.drop_path = TimeSformerDropPath(config.drop_path_rate) if drop_path_rate > 0.0 else nn.Identity()
+        self.drop_path = TimeSformerDropPath(drop_path_rate) if drop_path_rate > 0.0 else nn.Identity()
         self.attention = TimeSformerAttention(config)
         self.intermediate = TimesformerIntermediate(config)
         self.output = TimesformerOutput(config)
@@ -439,7 +437,7 @@ class TimesformerEncoder(nn.Module):
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
             if self.gradient_checkpointing and self.training:
-                layer_outputs = self.gradient_checkpointing_func(
+                layer_outputs = self._gradient_checkpointing_func(
                     layer_module.__call__,
                     hidden_states,
                     output_attentions,
@@ -487,11 +485,6 @@ class TimesformerPreTrainedModel(PreTrainedModel):
             nn.init.trunc_normal_(module.cls_token, std=self.config.initializer_range)
             nn.init.trunc_normal_(module.position_embeddings, std=self.config.initializer_range)
             module.patch_embeddings.apply(self._init_weights)
-
-    def _set_gradient_checkpointing(self, module, gradient_checkpointing_func=None):
-        if isinstance(module, TimesformerEncoder):
-            module.gradient_checkpointing_func = gradient_checkpointing_func
-            module.gradient_checkpointing = gradient_checkpointing_func is not None
 
 
 TIMESFORMER_START_DOCSTRING = r"""

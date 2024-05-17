@@ -42,12 +42,8 @@ logger = logging.get_logger(__name__)
 _CHECKPOINT_FOR_DOC = "openai/imagegpt-small"
 _CONFIG_FOR_DOC = "ImageGPTConfig"
 
-IMAGEGPT_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "openai/imagegpt-small",
-    "openai/imagegpt-medium",
-    "openai/imagegpt-large",
-    # See all Image GPT models at https://huggingface.co/models?filter=imagegpt
-]
+
+from ..deprecated._archive_maps import IMAGEGPT_PRETRAINED_MODEL_ARCHIVE_LIST  # noqa: F401, E402
 
 
 def load_tf_weights_in_imagegpt(model, config, imagegpt_checkpoint_path):
@@ -525,11 +521,6 @@ class ImageGPTPreTrainedModel(PreTrainedModel):
                 # Special Scaled Initialization --> There are 2 Layer Norms per Transformer Block
                 p.data.normal_(mean=0.0, std=(self.config.initializer_range / math.sqrt(2 * self.config.n_layer)))
 
-    def _set_gradient_checkpointing(self, module, gradient_checkpointing_func=None):
-        if isinstance(module, ImageGPTModel):
-            module.gradient_checkpointing_func = gradient_checkpointing_func
-            module.gradient_checkpointing = gradient_checkpointing_func is not None
-
 
 IMAGEGPT_START_DOCSTRING = r"""
 
@@ -817,7 +808,7 @@ class ImageGPTModel(ImageGPTPreTrainedModel):
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
             if self.gradient_checkpointing and self.training:
-                outputs = self.gradient_checkpointing_func(
+                outputs = self._gradient_checkpointing_func(
                     block.__call__,
                     hidden_states,
                     None,

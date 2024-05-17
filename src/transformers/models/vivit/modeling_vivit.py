@@ -36,10 +36,8 @@ logger = logging.get_logger(__name__)
 _CHECKPOINT_FOR_DOC = "google/vivit-b-16x2-kinetics400"
 _CONFIG_FOR_DOC = "VivitConfig"
 
-VIVIT_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "google/vivit-b-16x2-kinetics400",
-    # See all Vivit models at https://huggingface.co/models?filter=vivit
-]
+
+from ..deprecated._archive_maps import VIVIT_PRETRAINED_MODEL_ARCHIVE_LIST  # noqa: F401, E402
 
 
 class VivitTubeletEmbeddings(nn.Module):
@@ -338,7 +336,7 @@ class VivitEncoder(nn.Module):
             layer_head_mask = head_mask[i] if head_mask is not None else None
 
             if self.gradient_checkpointing and self.training:
-                layer_outputs = self.gradient_checkpointing_func(
+                layer_outputs = self._gradient_checkpointing_func(
                     layer_module.__call__,
                     hidden_states,
                     layer_head_mask,
@@ -407,11 +405,6 @@ class VivitPreTrainedModel(PreTrainedModel):
             module.weight.data.fill_(1.0)
         elif isinstance(module, nn.Parameter):
             module.data.normal_(mean=0.0, std=self.config.initializer_range)
-
-    def _set_gradient_checkpointing(self, module, gradient_checkpointing_func=None):
-        if isinstance(module, VivitEncoder):
-            module.gradient_checkpointing_func = gradient_checkpointing_func
-            module.gradient_checkpointing = gradient_checkpointing_func is not None
 
 
 VIVIT_START_DOCSTRING = r"""
