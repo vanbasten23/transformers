@@ -1785,7 +1785,7 @@ class Trainer:
         return model
 
     def _xla_sharded_dataloader(self, dataloader):
-        if is_torch_tpu_available():
+        if is_torch_xla_available():
             import torch_xla.experimental.xla_sharding as xs
             import torch_xla.distributed.parallel_loader as pl
             sharding_spec = xs.ShardingSpec(self.args.spmd_mesh, (('dcn', 'data'), None))
@@ -1928,8 +1928,7 @@ class Trainer:
         logger.debug(f"Currently training with a batch size of: {self._train_batch_size}")
         # Data loader and number of training steps
 
-        # train_dataloader = self._xla_sharded_dataloader(self.get_train_dataloader()) # xw32: xla's way, replaced by next 3 lines
-        train_dataloader = self.get_train_dataloader()
+        train_dataloader = self._xla_sharded_dataloader(self.get_train_dataloader())
         if self.is_fsdp_xla_v2_enabled:
             train_dataloader = tpu_spmd_dataloader(train_dataloader)
 
@@ -3595,8 +3594,7 @@ class Trainer:
         # memory metrics - must set up as early as possible
         self._memory_tracker.start()
 
-        # eval_dataloader = self._xla_sharded_dataloader(self.get_eval_dataloader(eval_dataset)) # xla's way, replaced by the next 3 lines
-        eval_dataloader = self.get_eval_dataloader(eval_dataset)
+        eval_dataloader = self._xla_sharded_dataloader(self.get_eval_dataloader(eval_dataset))
         if self.is_fsdp_xla_v2_enabled:
             eval_dataloader = tpu_spmd_dataloader(eval_dataloader)
 
