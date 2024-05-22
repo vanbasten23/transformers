@@ -49,10 +49,8 @@ _EXPECTED_OUTPUT_SHAPE = [1, 50, 512]
 _IMAGE_CLASS_CHECKPOINT = "Zetatech/pvt-tiny-224"
 _IMAGE_CLASS_EXPECTED_OUTPUT = "tabby, tabby cat"
 
-PVT_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "Zetatech/pvt-tiny-224"
-    # See all PVT models at https://huggingface.co/models?filter=pvt
-]
+
+from ..deprecated._archive_maps import PVT_PRETRAINED_MODEL_ARCHIVE_LIST  # noqa: F401, E402
 
 
 # Copied from transformers.models.beit.modeling_beit.drop_path
@@ -488,11 +486,6 @@ class PvtPreTrainedModel(PreTrainedModel):
                     mean=0.0,
                     std=self.config.initializer_range,
                 )
-
-    def _set_gradient_checkpointing(self, module: PvtEncoder, gradient_checkpointing_func=None):
-        if isinstance(module, PvtEncoder):
-            module.gradient_checkpointing_func = gradient_checkpointing_func
-            module.gradient_checkpointing = gradient_checkpointing_func is not None
 
 
 PVT_START_DOCSTRING = r"""

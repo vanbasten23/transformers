@@ -45,10 +45,8 @@ logger = logging.get_logger(__name__)
 _CONFIG_FOR_DOC = "ViTMAEConfig"
 _CHECKPOINT_FOR_DOC = "facebook/vit-mae-base"
 
-VIT_MAE_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "facebook/vit-mae-base",
-    # See all ViTMAE models at https://huggingface.co/models?filter=vit_mae
-]
+
+from ..deprecated._archive_maps import VIT_MAE_PRETRAINED_MODEL_ARCHIVE_LIST  # noqa: F401, E402
 
 
 @dataclass
@@ -536,7 +534,7 @@ class ViTMAEEncoder(nn.Module):
             layer_head_mask = head_mask[i] if head_mask is not None else None
 
             if self.gradient_checkpointing and self.training:
-                layer_outputs = self.gradient_checkpointing_func(
+                layer_outputs = self._gradient_checkpointing_func(
                     layer_module.__call__,
                     hidden_states,
                     layer_head_mask,
@@ -584,11 +582,6 @@ class ViTMAEPreTrainedModel(PreTrainedModel):
         elif isinstance(module, nn.LayerNorm):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
-
-    def _set_gradient_checkpointing(self, module, gradient_checkpointing_func=None):
-        if isinstance(module, (ViTMAEEncoder, ViTMAEDecoder)):
-            module.gradient_checkpointing_func = gradient_checkpointing_func
-            module.gradient_checkpointing = gradient_checkpointing_func is not None
 
 
 VIT_MAE_START_DOCSTRING = r"""
@@ -788,7 +781,7 @@ class ViTMAEDecoder(nn.Module):
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
             if self.gradient_checkpointing and self.training:
-                layer_outputs = self.gradient_checkpointing_func(
+                layer_outputs = self._gradient_checkpointing_func(
                     layer_module.__call__,
                     hidden_states,
                     None,

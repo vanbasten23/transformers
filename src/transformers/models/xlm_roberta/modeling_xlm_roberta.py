@@ -48,18 +48,11 @@ from .configuration_xlm_roberta import XLMRobertaConfig
 
 logger = logging.get_logger(__name__)
 
-_CHECKPOINT_FOR_DOC = "xlm-roberta-base"
+_CHECKPOINT_FOR_DOC = "FacebookAI/xlm-roberta-base"
 _CONFIG_FOR_DOC = "XLMRobertaConfig"
 
-XLM_ROBERTA_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "xlm-roberta-base",
-    "xlm-roberta-large",
-    "xlm-roberta-large-finetuned-conll02-dutch",
-    "xlm-roberta-large-finetuned-conll02-spanish",
-    "xlm-roberta-large-finetuned-conll03-english",
-    "xlm-roberta-large-finetuned-conll03-german",
-    # See all XLM-RoBERTa models at https://huggingface.co/models?filter=xlm-roberta
-]
+
+from ..deprecated._archive_maps import XLM_ROBERTA_PRETRAINED_MODEL_ARCHIVE_LIST  # noqa: F401, E402
 
 
 # Copied from transformers.models.roberta.modeling_roberta.RobertaEmbeddings with Roberta->XLMRoberta
@@ -511,7 +504,7 @@ class XLMRobertaEncoder(nn.Module):
             past_key_value = past_key_values[i] if past_key_values is not None else None
 
             if self.gradient_checkpointing and self.training:
-                layer_outputs = self.gradient_checkpointing_func(
+                layer_outputs = self._gradient_checkpointing_func(
                     layer_module.__call__,
                     hidden_states,
                     attention_mask,
@@ -608,11 +601,6 @@ class XLMRobertaPreTrainedModel(PreTrainedModel):
         elif isinstance(module, nn.LayerNorm):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
-
-    def _set_gradient_checkpointing(self, module, gradient_checkpointing_func=None):
-        if isinstance(module, XLMRobertaEncoder):
-            module.gradient_checkpointing_func = gradient_checkpointing_func
-            module.gradient_checkpointing = gradient_checkpointing_func is not None
 
 
 XLM_ROBERTA_START_DOCSTRING = r"""
@@ -945,10 +933,10 @@ class XLMRobertaForCausalLM(XLMRobertaPreTrainedModel):
         >>> from transformers import AutoTokenizer, XLMRobertaForCausalLM, AutoConfig
         >>> import torch
 
-        >>> tokenizer = AutoTokenizer.from_pretrained("roberta-base")
-        >>> config = AutoConfig.from_pretrained("roberta-base")
+        >>> tokenizer = AutoTokenizer.from_pretrained("FacebookAI/roberta-base")
+        >>> config = AutoConfig.from_pretrained("FacebookAI/roberta-base")
         >>> config.is_decoder = True
-        >>> model = XLMRobertaForCausalLM.from_pretrained("roberta-base", config=config)
+        >>> model = XLMRobertaForCausalLM.from_pretrained("FacebookAI/roberta-base", config=config)
 
         >>> inputs = tokenizer("Hello, my dog is cute", return_tensors="pt")
         >>> outputs = model(**inputs)

@@ -52,10 +52,8 @@ logger = logging.get_logger(__name__)
 _CONFIG_FOR_DOC = "RemBertConfig"
 _CHECKPOINT_FOR_DOC = "google/rembert"
 
-REMBERT_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "google/rembert",
-    # See all RemBERT models at https://huggingface.co/models?filter=rembert
-]
+
+from ..deprecated._archive_maps import REMBERT_PRETRAINED_MODEL_ARCHIVE_LIST  # noqa: F401, E402
 
 
 def load_tf_weights_in_rembert(model, config, tf_checkpoint_path):
@@ -543,7 +541,7 @@ class RemBertEncoder(nn.Module):
             past_key_value = past_key_values[i] if past_key_values is not None else None
 
             if self.gradient_checkpointing and self.training:
-                layer_outputs = self.gradient_checkpointing_func(
+                layer_outputs = self._gradient_checkpointing_func(
                     layer_module.__call__,
                     hidden_states,
                     attention_mask,
@@ -667,11 +665,6 @@ class RemBertPreTrainedModel(PreTrainedModel):
         elif isinstance(module, nn.LayerNorm):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
-
-    def _set_gradient_checkpointing(self, module, gradient_checkpointing_func=None):
-        if isinstance(module, RemBertEncoder):
-            module.gradient_checkpointing_func = gradient_checkpointing_func
-            module.gradient_checkpointing = gradient_checkpointing_func is not None
 
 
 REMBERT_START_DOCSTRING = r"""
