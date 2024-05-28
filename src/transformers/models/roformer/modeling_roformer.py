@@ -52,15 +52,8 @@ logger = logging.get_logger(__name__)
 _CHECKPOINT_FOR_DOC = "junnyu/roformer_chinese_base"
 _CONFIG_FOR_DOC = "RoFormerConfig"
 
-ROFORMER_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "junnyu/roformer_chinese_small",
-    "junnyu/roformer_chinese_base",
-    "junnyu/roformer_chinese_char_small",
-    "junnyu/roformer_chinese_char_base",
-    "junnyu/roformer_small_discriminator",
-    "junnyu/roformer_small_generator"
-    # See all RoFormer models at https://huggingface.co/models?filter=roformer
-]
+
+from ..deprecated._archive_maps import ROFORMER_PRETRAINED_MODEL_ARCHIVE_LIST  # noqa: F401, E402
 
 
 # Copied from transformers.models.marian.modeling_marian.MarianSinusoidalPositionalEmbedding with Marian->RoFormer
@@ -578,7 +571,7 @@ class RoFormerEncoder(nn.Module):
             past_key_value = past_key_values[i] if past_key_values is not None else None
 
             if self.gradient_checkpointing and self.training:
-                layer_outputs = self.gradient_checkpointing_func(
+                layer_outputs = self._gradient_checkpointing_func(
                     layer_module.__call__,
                     hidden_states,
                     attention_mask,
@@ -709,11 +702,6 @@ class RoFormerPreTrainedModel(PreTrainedModel):
         elif isinstance(module, nn.LayerNorm):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
-
-    def _set_gradient_checkpointing(self, module, gradient_checkpointing_func=None):
-        if isinstance(module, RoFormerEncoder):
-            module.gradient_checkpointing_func = gradient_checkpointing_func
-            module.gradient_checkpointing = gradient_checkpointing_func is not None
 
 
 ROFORMER_START_DOCSTRING = r"""

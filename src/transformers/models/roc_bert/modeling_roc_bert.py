@@ -56,9 +56,7 @@ _EXPECTED_OUTPUT_SHAPE = [1, 8, 768]
 
 # Token Classification output
 _CHECKPOINT_FOR_TOKEN_CLASSIFICATION = "ArthurZ/dummy-rocbert-ner"
-# fmt: off
-_TOKEN_CLASS_EXPECTED_OUTPUT = ["S-EVENT", "S-FAC", "I-ORDINAL", "I-ORDINAL", "E-ORG", "E-LANGUAGE", "E-ORG", "E-ORG", "E-ORG", "E-ORG", "I-EVENT", "S-TIME", "S-TIME", "E-LANGUAGE", "S-TIME", "E-DATE", "I-ORDINAL", "E-QUANTITY", "E-LANGUAGE", "S-TIME", "B-ORDINAL", "S-PRODUCT", "E-LANGUAGE", "E-LANGUAGE", "E-ORG", "E-LOC", "S-TIME", "I-ORDINAL", "S-FAC", "O", "S-GPE", "I-EVENT", "S-GPE", "E-LANGUAGE", "E-ORG", "S-EVENT", "S-FAC", "S-FAC", "S-FAC", "E-ORG", "S-FAC", "E-ORG", "S-GPE"]
-# fmt: on
+_TOKEN_CLASS_EXPECTED_OUTPUT = ["S-EVENT", "S-FAC", "I-ORDINAL", "I-ORDINAL", "E-ORG", "E-LANGUAGE", "E-ORG", "E-ORG", "E-ORG", "E-ORG", "I-EVENT", "S-TIME", "S-TIME", "E-LANGUAGE", "S-TIME", "E-DATE", "I-ORDINAL", "E-QUANTITY", "E-LANGUAGE", "S-TIME", "B-ORDINAL", "S-PRODUCT", "E-LANGUAGE", "E-LANGUAGE", "E-ORG", "E-LOC", "S-TIME", "I-ORDINAL", "S-FAC", "O", "S-GPE", "I-EVENT", "S-GPE", "E-LANGUAGE", "E-ORG", "S-EVENT", "S-FAC", "S-FAC", "S-FAC", "E-ORG", "S-FAC", "E-ORG", "S-GPE"]  # fmt: skip
 _TOKEN_CLASS_EXPECTED_LOSS = 3.62
 
 # SequenceClassification docstring
@@ -74,10 +72,8 @@ _QA_TARGET_START_INDEX = 14
 _QA_TARGET_END_INDEX = 15
 
 # Maske language modeling
-ROC_BERT_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "weiweishi/roc-bert-base-zh",
-    # See all RoCBert models at https://huggingface.co/models?filter=roc_bert
-]
+
+from ..deprecated._archive_maps import ROC_BERT_PRETRAINED_MODEL_ARCHIVE_LIST  # noqa: F401, E402
 
 
 # Copied from transformers.models.bert.modeling_bert.load_tf_weights_in_bert with bert->roc_bert
@@ -644,7 +640,7 @@ class RoCBertEncoder(nn.Module):
             past_key_value = past_key_values[i] if past_key_values is not None else None
 
             if self.gradient_checkpointing and self.training:
-                layer_outputs = self.gradient_checkpointing_func(
+                layer_outputs = self._gradient_checkpointing_func(
                     layer_module.__call__,
                     hidden_states,
                     attention_mask,
@@ -790,11 +786,6 @@ class RoCBertPreTrainedModel(PreTrainedModel):
         elif isinstance(module, nn.LayerNorm):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
-
-    def _set_gradient_checkpointing(self, module, gradient_checkpointing_func=None):
-        if isinstance(module, RoCBertEncoder):
-            module.gradient_checkpointing_func = gradient_checkpointing_func
-            module.gradient_checkpointing = gradient_checkpointing_func is not None
 
 
 ROC_BERT_START_DOCSTRING = r"""

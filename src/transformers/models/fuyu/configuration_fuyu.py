@@ -21,9 +21,8 @@ from ..auto import CONFIG_MAPPING
 
 logger = logging.get_logger(__name__)
 
-FUYU_PRETRAINED_CONFIG_ARCHIVE_MAP = {
-    "adept/fuyu-8b-base": "https://huggingface.co/adept/fuyu-8b-base/resolve/main/config.json",
-}
+
+from ..deprecated._archive_maps import FUYU_PRETRAINED_CONFIG_ARCHIVE_MAP  # noqa: F401, E402
 
 
 class FuyuConfig(PretrainedConfig):
@@ -31,7 +30,7 @@ class FuyuConfig(PretrainedConfig):
     This is the configuration class to store the configuration of a [`FuyuForCausalLM`]. It is used to instantiate an
     Fuyu model according to the specified arguments, defining the model architecture. Instantiating a configuration
     with the defaults will yield a similar configuration to that of the
-    [adept/fuyu-8b-base](https://huggingface.co/adept/fuyu-8b-base).
+    [adept/fuyu-8b](https://huggingface.co/adept/fuyu-8b).
 
     Configuration objects inherit from [`PretrainedConfig`] and can be used to control the model outputs. Read the
     documentation from [`PretrainedConfig`] for more information.
@@ -102,6 +101,7 @@ class FuyuConfig(PretrainedConfig):
     >>> # Initializing a Fuyu fuyu-7b style configuration
     >>> configuration = FuyuConfig()
     ```"""
+
     model_type = "fuyu"
     keys_to_ignore_at_inference = ["past_key_values"]
 
@@ -199,8 +199,7 @@ class FuyuConfig(PretrainedConfig):
 
         if not isinstance(self.rope_scaling, dict) or len(self.rope_scaling) != 2:
             raise ValueError(
-                "`rope_scaling` must be a dictionary with with two fields, `type` and `factor`, "
-                f"got {self.rope_scaling}"
+                "`rope_scaling` must be a dictionary with two fields, `type` and `factor`, " f"got {self.rope_scaling}"
             )
         rope_scaling_type = self.rope_scaling.get("type", None)
         rope_scaling_factor = self.rope_scaling.get("factor", None)

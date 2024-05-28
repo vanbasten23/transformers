@@ -37,10 +37,8 @@ logger = logging.get_logger(__name__)
 
 _CONFIG_FOR_DOC = "ViTMSNConfig"
 _CHECKPOINT_FOR_DOC = "facebook/vit-msn-small"
-VIT_MSN_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "facebook/vit-msn-small",
-    # See all ViTMSN models at https://huggingface.co/models?filter=vit_msn
-]
+
+from ..deprecated._archive_maps import VIT_MSN_PRETRAINED_MODEL_ARCHIVE_LIST  # noqa: F401, E402
 
 
 class ViTMSNEmbeddings(nn.Module):
@@ -387,7 +385,7 @@ class ViTMSNEncoder(nn.Module):
             layer_head_mask = head_mask[i] if head_mask is not None else None
 
             if self.gradient_checkpointing and self.training:
-                layer_outputs = self.gradient_checkpointing_func(
+                layer_outputs = self._gradient_checkpointing_func(
                     layer_module.__call__,
                     hidden_states,
                     layer_head_mask,
@@ -437,11 +435,6 @@ class ViTMSNPreTrainedModel(PreTrainedModel):
         elif isinstance(module, nn.LayerNorm):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
-
-    def _set_gradient_checkpointing(self, module: ViTMSNEncoder, gradient_checkpointing_func=None) -> None:
-        if isinstance(module, ViTMSNEncoder):
-            module.gradient_checkpointing_func = gradient_checkpointing_func
-            module.gradient_checkpointing = gradient_checkpointing_func is not None
 
 
 VIT_MSN_START_DOCSTRING = r"""
@@ -643,7 +636,7 @@ class ViTMSNForImageClassification(ViTMSNPreTrainedModel):
         >>> # model predicts one of the 1000 ImageNet classes
         >>> predicted_label = logits.argmax(-1).item()
         >>> print(model.config.id2label[predicted_label])
-        Kerry blue terrier
+        tusker
         ```"""
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 

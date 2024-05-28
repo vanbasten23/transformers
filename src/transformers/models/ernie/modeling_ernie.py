@@ -56,19 +56,7 @@ _CHECKPOINT_FOR_DOC = "nghuyong/ernie-1.0-base-zh"
 _CONFIG_FOR_DOC = "ErnieConfig"
 
 
-ERNIE_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "nghuyong/ernie-1.0-base-zh",
-    "nghuyong/ernie-2.0-base-en",
-    "nghuyong/ernie-2.0-large-en",
-    "nghuyong/ernie-3.0-base-zh",
-    "nghuyong/ernie-3.0-medium-zh",
-    "nghuyong/ernie-3.0-mini-zh",
-    "nghuyong/ernie-3.0-micro-zh",
-    "nghuyong/ernie-3.0-nano-zh",
-    "nghuyong/ernie-gram-zh",
-    "nghuyong/ernie-health-zh",
-    # See all ERNIE models at https://huggingface.co/models?filter=ernie
-]
+from ..deprecated._archive_maps import ERNIE_PRETRAINED_MODEL_ARCHIVE_LIST  # noqa: F401, E402
 
 
 class ErnieEmbeddings(nn.Module):
@@ -506,7 +494,7 @@ class ErnieEncoder(nn.Module):
             past_key_value = past_key_values[i] if past_key_values is not None else None
 
             if self.gradient_checkpointing and self.training:
-                layer_outputs = self.gradient_checkpointing_func(
+                layer_outputs = self._gradient_checkpointing_func(
                     layer_module.__call__,
                     hidden_states,
                     attention_mask,
@@ -674,11 +662,6 @@ class ErniePreTrainedModel(PreTrainedModel):
         elif isinstance(module, nn.LayerNorm):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
-
-    def _set_gradient_checkpointing(self, module, gradient_checkpointing_func=None):
-        if isinstance(module, ErnieEncoder):
-            module.gradient_checkpointing_func = gradient_checkpointing_func
-            module.gradient_checkpointing = gradient_checkpointing_func is not None
 
 
 @dataclass

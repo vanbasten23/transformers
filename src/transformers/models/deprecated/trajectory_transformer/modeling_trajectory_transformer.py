@@ -41,10 +41,8 @@ logger = logging.get_logger(__name__)
 _CHECKPOINT_FOR_DOC = "CarlCochet/trajectory-transformer-halfcheetah-medium-v2"
 _CONFIG_FOR_DOC = "TrajectoryTransformerConfig"
 
-TRAJECTORY_TRANSFORMER_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "CarlCochet/trajectory-transformer-halfcheetah-medium-v2",
-    # See all TrajectoryTransformer models at https://huggingface.co/models?filter=trajectory_transformer
-]
+
+from .._archive_maps import TRAJECTORY_TRANSFORMER_PRETRAINED_MODEL_ARCHIVE_LIST  # noqa: F401, E402
 
 
 def load_tf_weights_in_trajectory_transformer(model, config, tf_checkpoint_path):
@@ -162,11 +160,6 @@ class TrajectoryTransformerPreTrainedModel(PreTrainedModel):
     base_model_prefix = "trajectory_transformer"
     main_input_name = "trajectories"
     supports_gradient_checkpointing = True
-
-    def _set_gradient_checkpointing(self, module, gradient_checkpointing_func=None):
-        if isinstance(module, TrajectoryTransformerModel):
-            module.gradient_checkpointing_func = gradient_checkpointing_func
-            module.gradient_checkpointing = gradient_checkpointing_func is not None
 
     def _init_weights(self, module):
         if isinstance(module, (nn.Linear, nn.Embedding)):
@@ -551,7 +544,7 @@ class TrajectoryTransformerModel(TrajectoryTransformerPreTrainedModel):
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
             if self.gradient_checkpointing and self.training:
-                outputs = self.gradient_checkpointing_func(
+                outputs = self._gradient_checkpointing_func(
                     block.__call__,
                     hidden_states,
                     layer_past,
