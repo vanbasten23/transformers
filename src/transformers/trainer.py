@@ -2228,6 +2228,7 @@ class Trainer:
             xla_avg_step_time_starting_step = 2
             xla_avg_step_time_begin_time = -1
             for step, inputs in enumerate(epoch_iterator):
+                print('step=', step)
                 if self.state.global_step == 0:
                     print('input sharding', {k: (v.shape, torch_xla._XLAC._get_xla_sharding_spec(v)) for k, v in inputs.items()})
                 total_batched_samples += 1
